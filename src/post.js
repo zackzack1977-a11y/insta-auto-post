@@ -85,7 +85,7 @@ async function generateCaption(imagePath) {
 }
 
 async function postToInstagram(imageUrl, caption) {
-  const base = `https://graph.facebook.com/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}`;
+  const base = `https://graph.instagram.com/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}`;
 
   const createRes = await fetch(`${base}/media`, {
     method: 'POST',
