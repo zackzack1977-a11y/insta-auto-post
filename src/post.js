@@ -47,6 +47,14 @@ function pickNextPhoto() {
   return candidates[0]?.name ?? null;
 }
 
+function dishNameFromFilename(filename) {
+  let name = path.parse(filename).name;
+  name = name.replace(/\s*-\s*コピー(\s*\(\d+\))?\s*$/i, '');
+  name = name.replace(/\s*\(\d+\)\s*$/, '');
+  name = name.replace(/\s*[_-]\s*\d+\s*$/, '');
+  return name.trim();
+}
+
 function pickRandomMusic() {
   const files = fs.existsSync(MUSIC_DIR)
     ? fs.readdirSync(MUSIC_DIR).filter((f) => f.toLowerCase().endsWith('.mp3'))
@@ -63,7 +71,7 @@ async function generateCaptionAndOverlay(imagePath, dishNote) {
   const mediaType = ext === '.png' ? 'image/png' : 'image/jpeg';
 
   const dishNoteBlock = dishNote
-    ? `\nこの料理についての正確な情報(必ずこれに基づいて書き、矛盾する内容は書かない): ${dishNote}\n`
+    ? `\nこの料理の正式名称・情報(必ずこれを正としてキャッチコピー・本文に使い、これと矛盾する食材名・肉の種類・産地などを書かないこと): ${dishNote}\n`
     : '';
 
   const prompt = `あなたは静岡県富士市にあるダイニングバー「Food&Bar Zack」のSNS担当者です。
@@ -76,8 +84,9 @@ ${dishNoteBlock}
 添付の写真を見て、Instagram Reels投稿用のテキストを2種類作成してください。
 
 重要な注意:
-- 品種名・産地・「和牛」「A5」などの写真から確認できない具体的な食材情報は、憶測で書かないこと
-- 上記の「正確な情報」が無い場合は、料理名や食材を断定せず、見た目の魅力(色合い、質感、雰囲気)を中心に表現すること
+- 上記に料理の正式名称がある場合、写真の見た目から違う食材(例: 実際は鹿肉なのに牛肉と書く)を憶測で書かないこと。名称に含まれる食材名をそのまま使うこと
+- 品種名・産地・「和牛」「A5」など、正式名称にも写真からも確認できない具体的な食材情報は、憶測で書かないこと
+- 料理の正式名称が無い場合は、食材や部位を断定せず、見た目の魅力(色合い、質感、雰囲気)を中心に表現すること
 
 出力は以下の形式で、この通りに出力してください(前置き・説明文は禁止):
 
@@ -245,7 +254,10 @@ async function main() {
   const imagePath = path.join(PHOTOS_DIR, photo);
 
   const noteFile = path.join(PHOTOS_DIR, path.parse(photo).name + '.txt');
-  const dishNote = fs.existsSync(noteFile) ? fs.readFileSync(noteFile, 'utf8').trim() : null;
+  const noteText = fs.existsSync(noteFile) ? fs.readFileSync(noteFile, 'utf8').trim() : null;
+  const dishName = dishNameFromFilename(photo);
+  const dishNote = noteText || (dishName ? `料理名: ${dishName}` : null);
+  console.log('料理情報として使用: ' + (dishNote ?? '(なし)'));
 
   const { overlayText, caption } = await generateCaptionAndOverlay(imagePath, dishNote);
   console.log('動画テキスト: ' + overlayText);
