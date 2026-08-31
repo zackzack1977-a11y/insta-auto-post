@@ -1,0 +1,10 @@
+{
+  "name": "insta-auto-post",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Food&Bar Zack Instagram自動投稿",
+  "type": "commonjs",
+  "scripts": {
+    "post": "node src/post.js"
+  }
+}

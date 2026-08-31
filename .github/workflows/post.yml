@@ -1,0 +1,34 @@
+name: Instagram自動投稿
+
+on:
+  schedule:
+    - cron: '0 2 * * 1,3,5'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 投稿を実行
+        env:
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node src/post.js
+
+      - name: 投稿履歴をコミット
+        run: |
+          git config user.name "insta-auto-post-bot"
+          git config user.email "actions@github.com"
+          git add data/posted.json
+          git diff --cached --quiet || git commit -m "投稿履歴を更新"
+          git push
