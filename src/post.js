@@ -84,6 +84,28 @@ async function generateCaption(imagePath) {
   return json.content[0].text.trim();
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitUntilMediaReady(creationId, attempts = 10, intervalMs = 5000) {
+  for (let i = 0; i < attempts; i += 1) {
+    const res = await fetch(
+      `https://graph.instagram.com/v21.0/${creationId}?fields=status_code&access_token=${INSTAGRAM_ACCESS_TOKEN}`
+    );
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(`メディア状態確認エラー: ${JSON.stringify(json)}`);
+    }
+    if (json.status_code === 'FINISHED') return;
+    if (json.status_code === 'ERROR') {
+      throw new Error('Instagram側でメディアの処理に失敗しました');
+    }
+    await sleep(intervalMs);
+  }
+  throw new Error('メディアの準備がタイムアウトしました');
+}
+
 async function postToInstagram(imageUrl, caption) {
   const base = `https://graph.instagram.com/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}`;
 
@@ -100,6 +122,8 @@ async function postToInstagram(imageUrl, caption) {
   if (!createRes.ok) {
     throw new Error(`Instagramメディア作成エラー: ${JSON.stringify(createJson)}`);
   }
+
+  await waitUntilMediaReady(createJson.id);
 
   const publishRes = await fetch(`${base}/media_publish`, {
     method: 'POST',
