@@ -1,9 +1,14 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
-const PHOTOS_DIR = path.join(__dirname, '..', 'photos');
-const POSTED_LOG = path.join(__dirname, '..', 'data', 'posted.json');
+const ROOT = path.join(__dirname, '..');
+const PHOTOS_DIR = path.join(ROOT, 'photos');
+const MUSIC_DIR = path.join(ROOT, 'music');
+const GENERATED_DIR = path.join(ROOT, 'generated');
+const POSTED_LOG = path.join(ROOT, 'data', 'posted.json');
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
+const VIDEO_SECONDS = 10;
 
 const {
   INSTAGRAM_BUSINESS_ACCOUNT_ID,
@@ -12,6 +17,14 @@ const {
   GITHUB_REPOSITORY,
   GITHUB_REF_NAME,
 } = process.env;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function git(args) {
+  execFileSync('git', args, { cwd: ROOT, stdio: 'inherit' });
+}
 
 function loadPostedList() {
   if (!fs.existsSync(POSTED_LOG)) return [];
@@ -34,10 +47,24 @@ function pickNextPhoto() {
   return candidates[0]?.name ?? null;
 }
 
-async function generateCaption(imagePath) {
+function pickRandomMusic() {
+  const files = fs.existsSync(MUSIC_DIR)
+    ? fs.readdirSync(MUSIC_DIR).filter((f) => f.toLowerCase().endsWith('.mp3'))
+    : [];
+  if (files.length === 0) {
+    throw new Error('musicフォルダに著作権フリーのmp3ファイルを入れてください。');
+  }
+  return path.join(MUSIC_DIR, files[Math.floor(Math.random() * files.length)]);
+}
+
+async function generateCaptionAndOverlay(imagePath, dishNote) {
   const imageData = fs.readFileSync(imagePath).toString('base64');
   const ext = path.extname(imagePath).toLowerCase();
   const mediaType = ext === '.png' ? 'image/png' : 'image/jpeg';
+
+  const dishNoteBlock = dishNote
+    ? `\nこの料理についての正確な情報(必ずこれに基づいて書き、矛盾する内容は書かない): ${dishNote}\n`
+    : '';
 
   const prompt = `あなたは静岡県富士市にあるダイニングバー「Food&Bar Zack」のSNS担当者です。
 
@@ -45,15 +72,20 @@ async function generateCaption(imagePath) {
 - 住所: 静岡県富士市本市場町919
 - 最寄り駅: 富士駅から徒歩10分、新富士駅から徒歩15分
 - ジャンル: ダイニングバー(フレンチ・イタリアンをベースに、刺身や生ガキなど多国籍な料理も提供)
+${dishNoteBlock}
+添付の写真を見て、Instagram Reels投稿用のテキストを2種類作成してください。
 
-添付の写真を見て、Instagram投稿用の日本語キャプションを作成してください。
+重要な注意:
+- 品種名・産地・「和牛」「A5」などの写真から確認できない具体的な食材情報は、憶測で書かないこと
+- 上記の「正確な情報」が無い場合は、料理名や食材を断定せず、見た目の魅力(色合い、質感、雰囲気)を中心に表現すること
 
-条件:
-- 写真に写っている料理や雰囲気を魅力的に表現する
-- 親しみやすく、来店したくなるトーンにする
-- 3〜5行程度の本文の後に、空行を挟んでハッシュタグを15〜20個つける
-- ハッシュタグは集客に効果的なものを意識する(地域名+グルメ系、ジャンル系、汎用の飲食系、店名などをバランスよく)
-- 出力はキャプション本文とハッシュタグのみ。前置きや説明文は書かない`;
+出力は以下の形式で、この通りに出力してください(前置き・説明文は禁止):
+
+OVERLAY:
+(動画に焼き込む8〜14文字程度のキャッチコピー。絵文字は使わない)
+
+CAPTION:
+(Instagram投稿用の本文3〜5行。その後に空行を挟んでハッシュタグを15〜20個。集客に効果的な地域名+グルメ系、ジャンル系、汎用の飲食系、店名などをバランスよく)`;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -81,14 +113,73 @@ async function generateCaption(imagePath) {
   if (!res.ok) {
     throw new Error(`Anthropic API error: ${JSON.stringify(json)}`);
   }
-  return json.content[0].text.trim();
+  const text = json.content[0].text.trim();
+
+  const overlayMatch = text.match(/OVERLAY:\s*([\s\S]*?)\n\s*CAPTION:/i);
+  const captionMatch = text.match(/CAPTION:\s*([\s\S]*)$/i);
+  if (!overlayMatch || !captionMatch) {
+    throw new Error(`AIの出力形式が想定と違います:\n${text}`);
+  }
+  return {
+    overlayText: overlayMatch[1].trim(),
+    caption: captionMatch[1].trim(),
+  };
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function findJapaneseFont() {
+  const fontPath = execFileSync('fc-match', [':lang=ja', '-f', '%{file}']).toString().trim();
+  if (!fontPath) {
+    throw new Error('日本語フォントが見つかりません。fonts-noto-cjkをインストールしてください。');
+  }
+  return fontPath;
 }
 
-async function waitUntilMediaReady(creationId, attempts = 10, intervalMs = 5000) {
+function buildVideo(imagePath, overlayText, musicPath, outputPath) {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  const textFile = outputPath + '.overlay.txt';
+  fs.writeFileSync(textFile, overlayText, 'utf8');
+
+  const fontFile = findJapaneseFont();
+  const fps = 30;
+  const totalFrames = VIDEO_SECONDS * fps;
+
+  const zoompan = `zoompan=z='min(zoom+0.0015,1.2)':d=${totalFrames}:s=1080x1920:fps=${fps}`;
+  const drawtext = [
+    `drawtext=textfile='${textFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'`,
+    `fontfile='${fontFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'`,
+    'fontsize=64',
+    'fontcolor=white',
+    'box=1',
+    'boxcolor=black@0.55',
+    'boxborderw=20',
+    'x=(w-text_w)/2',
+    'y=h-320',
+  ].join(':');
+
+  const filterComplex = `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,${zoompan},${drawtext}[v]`;
+
+  execFileSync('ffmpeg', [
+    '-y',
+    '-loop', '1',
+    '-i', imagePath,
+    '-i', musicPath,
+    '-filter_complex', filterComplex,
+    '-map', '[v]',
+    '-map', '1:a',
+    '-t', String(VIDEO_SECONDS),
+    '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-af', 'afade=t=out:st=' + (VIDEO_SECONDS - 1) + ':d=1',
+    '-shortest',
+    outputPath,
+  ], { stdio: 'inherit' });
+
+  fs.rmSync(textFile);
+}
+
+async function waitUntilMediaReady(creationId, attempts = 30, intervalMs = 10000) {
   for (let i = 0; i < attempts; i += 1) {
     const res = await fetch(
       `https://graph.instagram.com/v21.0/${creationId}?fields=status_code&access_token=${INSTAGRAM_ACCESS_TOKEN}`
@@ -106,14 +197,15 @@ async function waitUntilMediaReady(creationId, attempts = 10, intervalMs = 5000)
   throw new Error('メディアの準備がタイムアウトしました');
 }
 
-async function postToInstagram(imageUrl, caption) {
+async function postReelToInstagram(videoUrl, caption) {
   const base = `https://graph.instagram.com/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}`;
 
   const createRes = await fetch(`${base}/media`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      image_url: imageUrl,
+      media_type: 'REELS',
+      video_url: videoUrl,
       caption,
       access_token: INSTAGRAM_ACCESS_TOKEN,
     }),
@@ -150,18 +242,41 @@ async function main() {
   console.log(`投稿対象: ${photo}`);
   const imagePath = path.join(PHOTOS_DIR, photo);
 
-  const caption = await generateCaption(imagePath);
+  const noteFile = path.join(PHOTOS_DIR, path.parse(photo).name + '.txt');
+  const dishNote = fs.existsSync(noteFile) ? fs.readFileSync(noteFile, 'utf8').trim() : null;
+
+  const { overlayText, caption } = await generateCaptionAndOverlay(imagePath, dishNote);
+  console.log('動画テキスト: ' + overlayText);
   console.log('生成されたキャプション:\n' + caption);
 
-  const branch = GITHUB_REF_NAME || 'main';
-  const imageUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/photos/${encodeURIComponent(photo)}`;
+  const musicPath = pickRandomMusic();
+  console.log('使用するBGM: ' + path.basename(musicPath));
 
-  await postToInstagram(imageUrl, caption);
+  const videoName = path.parse(photo).name + '.mp4';
+  const videoPath = path.join(GENERATED_DIR, videoName);
+  buildVideo(imagePath, overlayText, musicPath, videoPath);
+  console.log('動画を生成しました: ' + videoPath);
+
+  git(['config', 'user.name', 'insta-auto-post-bot']);
+  git(['config', 'user.email', 'actions@github.com']);
+  git(['add', path.relative(ROOT, videoPath)]);
+  git(['commit', '-m', `動画を生成: ${videoName}`]);
+  git(['push']);
+
+  const branch = GITHUB_REF_NAME || 'master';
+  const videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/generated/${encodeURIComponent(videoName)}`;
+
+  await postReelToInstagram(videoUrl, caption);
   console.log('投稿完了しました。');
 
   const posted = loadPostedList();
   posted.push(photo);
   savePostedList(posted);
+
+  fs.rmSync(videoPath);
+  git(['add', '-A']);
+  git(['commit', '-m', '投稿履歴を更新・生成ファイルを削除']);
+  git(['push']);
 }
 
 main().catch((err) => {
