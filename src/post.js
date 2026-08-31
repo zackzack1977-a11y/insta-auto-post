@@ -85,7 +85,9 @@ OVERLAY:
 (動画に焼き込む8〜14文字程度のキャッチコピー。絵文字は使わない)
 
 CAPTION:
-(Instagram投稿用の本文3〜5行。その後に空行を挟んでハッシュタグを15〜20個。集客に効果的な地域名+グルメ系、ジャンル系、汎用の飲食系、店名などをバランスよく)`;
+(Instagram投稿用の本文3〜5行。その後に空行を挟んでハッシュタグを15〜20個。集客に効果的な地域名+グルメ系、ジャンル系、汎用の飲食系、店名などをバランスよく)
+
+必ずOVERLAYとCAPTIONを1つずつだけ出力すること。複数の案・パターンを提示したり、「パターン2」のような代替案を追加したりしないこと。`;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -116,7 +118,7 @@ CAPTION:
   const text = json.content[0].text.trim();
 
   const overlayMatch = text.match(/OVERLAY:\s*([\s\S]*?)\n\s*CAPTION:/i);
-  const captionMatch = text.match(/CAPTION:\s*([\s\S]*)$/i);
+  const captionMatch = text.match(/CAPTION:\s*([\s\S]*?)(?:\n\s*(?:-{2,}|OVERLAY:|パターン)|$)/i);
   if (!overlayMatch || !captionMatch) {
     throw new Error(`AIの出力形式が想定と違います:\n${text}`);
   }
