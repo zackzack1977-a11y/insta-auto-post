@@ -154,18 +154,21 @@ function buildVideo(imagePath, overlayText, musicPath, outputPath) {
   const fontFile = findJapaneseFont();
   const fps = 30;
   const totalFrames = VIDEO_SECONDS * fps;
+  const zoomPerFrame = (0.2 / totalFrames).toFixed(6);
 
-  const zoompan = `zoompan=z='min(zoom+0.0015,1.2)':d=${totalFrames}:s=1080x1920:fps=${fps}`;
+  const zoompan = `zoompan=z='min(zoom+${zoomPerFrame},1.2)':d=1:s=1080x1920:fps=${fps}`;
   const drawtext = [
     `drawtext=textfile='${textFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'`,
     `fontfile='${fontFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'`,
-    'fontsize=64',
+    'fontsize=54',
     'fontcolor=white',
-    'box=1',
-    'boxcolor=black@0.55',
-    'boxborderw=20',
+    'borderw=3',
+    'bordercolor=black@0.7',
+    'shadowcolor=black@0.4',
+    'shadowx=2',
+    'shadowy=2',
     'x=(w-text_w)/2',
-    'y=h-320',
+    'y=h-300',
   ].join(':');
 
   const filterComplex = `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,${zoompan},${drawtext}[v]`;
@@ -173,6 +176,7 @@ function buildVideo(imagePath, overlayText, musicPath, outputPath) {
   execFileSync('ffmpeg', [
     '-y',
     '-loop', '1',
+    '-framerate', String(fps),
     '-i', imagePath,
     '-i', musicPath,
     '-filter_complex', filterComplex,
