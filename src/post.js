@@ -8,7 +8,7 @@ const MUSIC_DIR = path.join(ROOT, 'music');
 const GENERATED_DIR = path.join(ROOT, 'generated');
 const POSTED_LOG = path.join(ROOT, 'data', 'posted.json');
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
-const VIDEO_SECONDS = 10;
+const VIDEO_SECONDS = 15;
 
 const {
   INSTAGRAM_BUSINESS_ACCOUNT_ID,
