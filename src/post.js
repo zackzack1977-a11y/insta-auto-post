@@ -303,6 +303,9 @@ async function main() {
   let videoUrl;
   let generatedVideoPath = null;
 
+  git(['config', 'user.name', 'insta-auto-post-bot']);
+  git(['config', 'user.email', 'actions@github.com']);
+
   if (fs.existsSync(premadePath)) {
     console.log('事前生成済みの動画を使用します: ' + premadePath);
     videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/videos/${encodeURIComponent(videoName)}`;
@@ -314,8 +317,6 @@ async function main() {
     buildVideo(imagePath, overlayText, musicPath, generatedVideoPath);
     console.log('動画を生成しました(ffmpegフォールバック): ' + generatedVideoPath);
 
-    git(['config', 'user.name', 'insta-auto-post-bot']);
-    git(['config', 'user.email', 'actions@github.com']);
     git(['add', path.relative(ROOT, generatedVideoPath)]);
     git(['commit', '-m', `動画を生成: ${videoName}`]);
     git(['push']);
