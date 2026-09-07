@@ -156,7 +156,10 @@ function buildVideo(imagePath, overlayText, musicPath, outputPath) {
   const totalFrames = VIDEO_SECONDS * fps;
   const zoomPerFrame = (0.2 / totalFrames).toFixed(6);
 
-  const zoompan = `zoompan=z='min(zoom+${zoomPerFrame},1.2)':d=1:s=1080x1920:fps=${fps}`;
+  // 前フレームのzoom値を自己参照する書き方(zoom+...)は、-loop 1の静止画入力と組み合わせると
+  // 初回フレームから最大ズームに飛んでしまう既知の不具合があるため、絶対フレーム番号(on)を使って
+  // 毎フレームのズーム量を直接計算する(1から始まり、totalFramesかけて1.2まで一定速度で増える)
+  const zoompan = `zoompan=z='min(1+on*${zoomPerFrame},1.2)':d=1:s=1080x1920:fps=${fps}`;
   const drawtext = [
     `drawtext=textfile='${textFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'`,
     `fontfile='${fontFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'`,
@@ -171,7 +174,14 @@ function buildVideo(imagePath, overlayText, musicPath, outputPath) {
     'y=h-300',
   ].join(':');
 
-  const filterComplex = `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,${zoompan},${drawtext}[v]`;
+  // 横長の写真をそのままscale+cropで9:16にすると左右が大きく切り取られ、
+  // 「何の写真か分からないほどアップ」になってしまう。そのため、
+  // ぼかして拡大した背景の上に、写真全体を欠けさせずに縮小したものを重ねる
+  // (レターボックス+ぼかし背景)方式にする。どんな縦横比の写真でも全体が映る。
+  const filterComplex =
+    `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=30,eq=brightness=-0.08[bg];` +
+    `[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];` +
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,${zoompan},${drawtext}[v]`;
 
   execFileSync('ffmpeg', [
     '-y',
