@@ -2,8 +2,9 @@
 // Instagramの下書き(メディアコンテナ)を実際に公開する受け口。
 //
 // 必要なWorkerシークレット(wrangler secret putで設定):
-//   INSTAGRAM_ACCESS_TOKEN   … insta-auto-postのGitHub Secretsと同じ値
-//   PUBLISH_SIGNING_SECRET   … insta-auto-postのGitHub Secretsと同じ値(署名検証用)
+//   INSTAGRAM_ACCESS_TOKEN          … insta-auto-postのGitHub Secretsと同じ値
+//   INSTAGRAM_BUSINESS_ACCOUNT_ID   … insta-auto-postのGitHub Secretsと同じ値
+//   PUBLISH_SIGNING_SECRET          … insta-auto-postのGitHub Secretsと同じ値(署名検証用)
 //
 // デプロイ後、発行されるURL(例: https://xxx.workers.dev)を
 // insta-auto-postリポジトリのGitHub Secrets「PUBLISH_WORKER_URL」に
@@ -28,7 +29,7 @@ export default {
     }
 
     const res = await fetch(
-      `https://graph.instagram.com/v21.0/media_publish?creation_id=${encodeURIComponent(id)}&access_token=${encodeURIComponent(env.INSTAGRAM_ACCESS_TOKEN)}`,
+      `https://graph.instagram.com/v21.0/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish?creation_id=${encodeURIComponent(id)}&access_token=${encodeURIComponent(env.INSTAGRAM_ACCESS_TOKEN)}`,
       { method: 'POST' }
     );
     const json = await res.json();
