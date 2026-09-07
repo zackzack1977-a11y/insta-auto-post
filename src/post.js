@@ -7,6 +7,7 @@ const ROOT = path.join(__dirname, '..');
 const PHOTOS_DIR = path.join(ROOT, 'photos');
 const MUSIC_DIR = path.join(ROOT, 'music');
 const GENERATED_DIR = path.join(ROOT, 'generated');
+const PREMADE_VIDEOS_DIR = path.join(ROOT, 'videos');
 const POSTED_LOG = path.join(ROOT, 'data', 'posted.json');
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
 const VIDEO_SECONDS = 15;
@@ -293,22 +294,34 @@ async function main() {
   console.log('動画テキスト: ' + overlayText);
   console.log('生成されたキャプション:\n' + caption);
 
-  const musicPath = pickRandomMusic();
-  console.log('使用するBGM: ' + path.basename(musicPath));
-
   const videoName = path.parse(photo).name + '.mp4';
-  const videoPath = path.join(GENERATED_DIR, videoName);
-  buildVideo(imagePath, overlayText, musicPath, videoPath);
-  console.log('動画を生成しました: ' + videoPath);
-
-  git(['config', 'user.name', 'insta-auto-post-bot']);
-  git(['config', 'user.email', 'actions@github.com']);
-  git(['add', path.relative(ROOT, videoPath)]);
-  git(['commit', '-m', `動画を生成: ${videoName}`]);
-  git(['push']);
-
   const branch = GITHUB_REF_NAME || 'master';
-  const videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/generated/${encodeURIComponent(videoName)}`;
+
+  // Gensparkなどで事前に作った高品質な動画がvideos/に置いてあれば、
+  // ffmpegでの自動生成(Ken Burns風のズーム)は行わずそちらを優先して使う。
+  const premadePath = path.join(PREMADE_VIDEOS_DIR, videoName);
+  let videoUrl;
+  let generatedVideoPath = null;
+
+  if (fs.existsSync(premadePath)) {
+    console.log('事前生成済みの動画を使用します: ' + premadePath);
+    videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/videos/${encodeURIComponent(videoName)}`;
+  } else {
+    const musicPath = pickRandomMusic();
+    console.log('使用するBGM: ' + path.basename(musicPath));
+
+    generatedVideoPath = path.join(GENERATED_DIR, videoName);
+    buildVideo(imagePath, overlayText, musicPath, generatedVideoPath);
+    console.log('動画を生成しました(ffmpegフォールバック): ' + generatedVideoPath);
+
+    git(['config', 'user.name', 'insta-auto-post-bot']);
+    git(['config', 'user.email', 'actions@github.com']);
+    git(['add', path.relative(ROOT, generatedVideoPath)]);
+    git(['commit', '-m', `動画を生成: ${videoName}`]);
+    git(['push']);
+
+    videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/generated/${encodeURIComponent(videoName)}`;
+  }
 
   const creationId = await createMediaContainer(videoUrl, caption);
   console.log('Instagram側で公開準備が完了しました(まだ非公開): ' + creationId);
@@ -324,7 +337,7 @@ async function main() {
   posted.push(photo);
   savePostedList(posted);
 
-  fs.rmSync(videoPath);
+  if (generatedVideoPath) fs.rmSync(generatedVideoPath);
   git(['add', '-A']);
   git(['commit', '-m', '投稿履歴を更新・生成ファイルを削除']);
   git(['push']);
