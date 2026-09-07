@@ -26,4 +26,7 @@ jobs:
           INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          PUBLISH_SIGNING_SECRET: ${{ secrets.PUBLISH_SIGNING_SECRET }}
+          PUBLISH_WORKER_URL: ${{ secrets.PUBLISH_WORKER_URL }}
         run: node src/post.js

@@ -1,0 +1,3 @@
+name = "insta-auto-post-publish"
+main = "publish-worker.js"
+compatibility_date = "2026-09-07"

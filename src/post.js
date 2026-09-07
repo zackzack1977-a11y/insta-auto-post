@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
@@ -16,6 +17,9 @@ const {
   ANTHROPIC_API_KEY,
   GITHUB_REPOSITORY,
   GITHUB_REF_NAME,
+  LINE_CHANNEL_ACCESS_TOKEN,
+  PUBLISH_SIGNING_SECRET,
+  PUBLISH_WORKER_URL,
 } = process.env;
 
 function sleep(ms) {
@@ -222,7 +226,7 @@ async function waitUntilMediaReady(creationId, attempts = 30, intervalMs = 10000
   throw new Error('メディアの準備がタイムアウトしました');
 }
 
-async function postReelToInstagram(videoUrl, caption) {
+async function createMediaContainer(videoUrl, caption) {
   const base = `https://graph.instagram.com/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}`;
 
   const createRes = await fetch(`${base}/media`, {
@@ -241,20 +245,32 @@ async function postReelToInstagram(videoUrl, caption) {
   }
 
   await waitUntilMediaReady(createJson.id);
+  return createJson.id;
+}
 
-  const publishRes = await fetch(`${base}/media_publish`, {
+function signCreationId(creationId) {
+  return crypto.createHmac('sha256', PUBLISH_SIGNING_SECRET).update(creationId).digest('hex').slice(0, 16);
+}
+
+async function sendLineNotification(dishName, caption, publishUrl) {
+  const text =
+    `【Instagram投稿の確認】\n${dishName}\n\n` +
+    `${caption}\n\n` +
+    `内容を確認して問題なければ、このリンクをタップすると投稿されます:\n${publishUrl}`;
+
+  const body = JSON.stringify({ messages: [{ type: 'text', text }] });
+  const res = await fetch('https://api.line.me/v2/bot/message/broadcast', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      creation_id: createJson.id,
-      access_token: INSTAGRAM_ACCESS_TOKEN,
-    }),
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: Buffer.from(body, 'utf8'),
   });
-  const publishJson = await publishRes.json();
-  if (!publishRes.ok) {
-    throw new Error(`Instagram公開エラー: ${JSON.stringify(publishJson)}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`LINE通知エラー: ${errText}`);
   }
-  return publishJson;
 }
 
 async function main() {
@@ -294,9 +310,16 @@ async function main() {
   const branch = GITHUB_REF_NAME || 'master';
   const videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/generated/${encodeURIComponent(videoName)}`;
 
-  await postReelToInstagram(videoUrl, caption);
-  console.log('投稿完了しました。');
+  const creationId = await createMediaContainer(videoUrl, caption);
+  console.log('Instagram側で公開準備が完了しました(まだ非公開): ' + creationId);
 
+  const sig = signCreationId(creationId);
+  const publishUrl = `${PUBLISH_WORKER_URL}?id=${encodeURIComponent(creationId)}&sig=${sig}`;
+  await sendLineNotification(dishName || photo, caption, publishUrl);
+  console.log('LINEに確認通知を送信しました。実際の投稿はたけしさんがリンクをタップするまで行われません。');
+
+  // このpushed候補は「実際に投稿済み」ではなく「承認待ちで提示済み」の意味。
+  // 同じ写真を毎回LINEに送り続けないよう、ここで候補プールから外す。
   const posted = loadPostedList();
   posted.push(photo);
   savePostedList(posted);
