@@ -60,12 +60,14 @@ function dishNameFromFilename(filename) {
   return name.trim();
 }
 
+const MUSIC_EXTENSIONS = new Set(['.mp3', '.mp4', '.m4a', '.wav']);
+
 function pickRandomMusic() {
   const files = fs.existsSync(MUSIC_DIR)
-    ? fs.readdirSync(MUSIC_DIR).filter((f) => f.toLowerCase().endsWith('.mp3'))
+    ? fs.readdirSync(MUSIC_DIR).filter((f) => MUSIC_EXTENSIONS.has(path.extname(f).toLowerCase()))
     : [];
   if (files.length === 0) {
-    throw new Error('musicフォルダに著作権フリーのmp3ファイルを入れてください。');
+    throw new Error('musicフォルダに著作権フリーの音楽ファイル(mp3/mp4/m4a/wav)を入れてください。');
   }
   return path.join(MUSIC_DIR, files[Math.floor(Math.random() * files.length)]);
 }
