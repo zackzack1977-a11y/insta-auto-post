@@ -253,9 +253,13 @@ function signCreationId(creationId) {
   return crypto.createHmac('sha256', PUBLISH_SIGNING_SECRET).update(creationId).digest('hex').slice(0, 16);
 }
 
-async function sendLineNotification(dishName, caption, publishUrl) {
+async function sendLineNotification(dishName, caption, publishUrl, usedFallback) {
+  const fallbackWarning = usedFallback
+    ? '⚠️ Genspark動画が見つからなかったため、簡易版(写真をぼかしただけの背景)の動画になっています。\n\n'
+    : '';
   const text =
     `【Instagram投稿の確認】\n${dishName}\n\n` +
+    fallbackWarning +
     `${caption}\n\n` +
     `内容を確認して問題なければ、このリンクをタップすると投稿されます:\n${publishUrl}`;
 
@@ -329,7 +333,7 @@ async function main() {
 
   const sig = signCreationId(creationId);
   const publishUrl = `${PUBLISH_WORKER_URL}?id=${encodeURIComponent(creationId)}&sig=${sig}`;
-  await sendLineNotification(dishName || photo, caption, publishUrl);
+  await sendLineNotification(dishName || photo, caption, publishUrl, generatedVideoPath !== null);
   console.log('LINEに確認通知を送信しました。実際の投稿はたけしさんがリンクをタップするまで行われません。');
 
   // このpushed候補は「実際に投稿済み」ではなく「承認待ちで提示済み」の意味。
