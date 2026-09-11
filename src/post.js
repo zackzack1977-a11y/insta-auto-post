@@ -165,6 +165,38 @@ function findJapaneseFont() {
   return fontPath;
 }
 
+function getVideoDurationSeconds(videoPath) {
+  const out = execFileSync('ffprobe', [
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    videoPath,
+  ]).toString().trim();
+  return parseFloat(out);
+}
+
+// Genspark等で生成した動画は音楽を付けずに(無音で)作ってもらう運用にしているため、
+// ここでmusicフォルダからランダムに選んだ音源を合成する。映像はそのまま(再エンコードなし)、
+// 音声トラックだけを差し替える(元動画に音声があっても無視して上書きする)。
+function addMusicToVideo(inputVideoPath, musicPath, outputPath) {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  const duration = getVideoDurationSeconds(inputVideoPath);
+  const fadeStart = Math.max(duration - 1, 0);
+
+  execFileSync('ffmpeg', [
+    '-y',
+    '-i', inputVideoPath,
+    '-i', musicPath,
+    '-map', '0:v:0',
+    '-map', '1:a:0',
+    '-c:v', 'copy',
+    '-c:a', 'aac',
+    '-af', `afade=t=out:st=${fadeStart}:d=1`,
+    '-shortest',
+    outputPath,
+  ], { stdio: 'inherit' });
+}
+
 function buildVideo(imagePath, overlayText, musicPath, outputPath) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
@@ -327,7 +359,19 @@ async function main() {
 
   if (fs.existsSync(premadePath)) {
     console.log('事前生成済みの動画を使用します: ' + premadePath);
-    videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/videos/${encodeURIComponent(videoName)}`;
+
+    const musicPath = pickRandomMusic();
+    console.log('使用するBGM: ' + path.basename(musicPath));
+
+    generatedVideoPath = path.join(GENERATED_DIR, videoName);
+    addMusicToVideo(premadePath, musicPath, generatedVideoPath);
+    console.log('Genspark動画にBGMを合成しました: ' + generatedVideoPath);
+
+    git(['add', path.relative(ROOT, generatedVideoPath)]);
+    git(['commit', '-m', `動画にBGMを合成: ${videoName}`]);
+    git(['push']);
+
+    videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/generated/${encodeURIComponent(videoName)}`;
   } else {
     const musicPath = pickRandomMusic();
     console.log('使用するBGM: ' + path.basename(musicPath));
