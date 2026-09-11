@@ -41,15 +41,28 @@ function savePostedList(list) {
   fs.writeFileSync(POSTED_LOG, JSON.stringify(list, null, 2));
 }
 
+function hasPremadeVideo(photoFilename) {
+  const videoName = path.parse(photoFilename).name + '.mp4';
+  return fs.existsSync(path.join(PREMADE_VIDEOS_DIR, videoName));
+}
+
 function pickNextPhoto() {
+  // GitHub Actions上のチェックアウトではファイルの更新日時がgit管理外(チェックアウト時刻)に
+  // なってしまい、mtime順は意味を持たない。そのため「Genspark動画が事前に用意されている
+  // 写真」を優先して選ぶ(たけしさんの方針: 作り置きした動画がある写真から順に投稿する)。
+  // 動画が無い写真同士の順序はファイル名順(決定的な順序を保つため)。
   const posted = new Set(loadPostedList());
   const candidates = fs
     .readdirSync(PHOTOS_DIR)
     .filter((f) => IMAGE_EXTENSIONS.has(path.extname(f).toLowerCase()))
     .filter((f) => !posted.has(f))
-    .map((f) => ({ name: f, mtime: fs.statSync(path.join(PHOTOS_DIR, f)).mtimeMs }))
-    .sort((a, b) => a.mtime - b.mtime);
-  return candidates[0]?.name ?? null;
+    .sort((a, b) => {
+      const aHasVideo = hasPremadeVideo(a);
+      const bHasVideo = hasPremadeVideo(b);
+      if (aHasVideo !== bHasVideo) return aHasVideo ? -1 : 1;
+      return a.localeCompare(b, 'ja');
+    });
+  return candidates[0] ?? null;
 }
 
 function dishNameFromFilename(filename) {
