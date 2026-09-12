@@ -353,6 +353,7 @@ async function main() {
   const premadePath = path.join(PREMADE_VIDEOS_DIR, videoName);
   let videoUrl;
   let generatedVideoPath = null;
+  let usedFfmpegFallback = false;
 
   git(['config', 'user.name', 'insta-auto-post-bot']);
   git(['config', 'user.email', 'actions@github.com']);
@@ -373,6 +374,7 @@ async function main() {
 
     videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/generated/${encodeURIComponent(videoName)}`;
   } else {
+    usedFfmpegFallback = true;
     const musicPath = pickRandomMusic();
     console.log('使用するBGM: ' + path.basename(musicPath));
 
@@ -392,7 +394,7 @@ async function main() {
 
   const sig = signCreationId(creationId);
   const publishUrl = `${PUBLISH_WORKER_URL}?id=${encodeURIComponent(creationId)}&sig=${sig}`;
-  await sendLineNotification(dishName || photo, caption, publishUrl, generatedVideoPath !== null);
+  await sendLineNotification(dishName || photo, caption, publishUrl, usedFfmpegFallback);
   console.log('LINEに確認通知を送信しました。実際の投稿はたけしさんがリンクをタップするまで行われません。');
 
   // このpushed候補は「実際に投稿済み」ではなく「承認待ちで提示済み」の意味。
