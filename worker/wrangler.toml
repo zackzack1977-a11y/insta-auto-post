@@ -1,3 +1,8 @@
 name = "insta-auto-post-publish"
 main = "publish-worker.js"
 compatibility_date = "2026-09-07"
+
+# 公開リンクの二重タップ防止・処理状態記録用(publish-worker.js参照)
+[[kv_namespaces]]
+binding = "PUBLISH_KV"
+id = "8452807982b74b3388c01bb6ea1a0932"
