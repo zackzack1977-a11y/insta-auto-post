@@ -178,13 +178,19 @@ async function handlePublish(request, env) {
 
 // --- LINEユーザーID調べ用の一時的なWebhook ---
 async function handleLineWebhook(request, env) {
+  console.log('[line-webhook] リクエスト受信');
   const bodyText = await request.text();
   const signature = request.headers.get('x-line-signature');
   if (!env.LINE_CHANNEL_SECRET || !signature) {
+    console.log('[line-webhook] 400: LINE_CHANNEL_SECRET未設定 または x-line-signatureヘッダ無し', {
+      hasSecret: !!env.LINE_CHANNEL_SECRET,
+      hasSignatureHeader: !!signature,
+    });
     return new Response('Bad Request', { status: 400 });
   }
   const valid = await verifyLineSignature(env.LINE_CHANNEL_SECRET, bodyText, signature);
   if (!valid) {
+    console.log('[line-webhook] 403: 署名検証に失敗');
     return new Response('Forbidden', { status: 403 });
   }
 
@@ -192,14 +198,16 @@ async function handleLineWebhook(request, env) {
   try {
     payload = JSON.parse(bodyText);
   } catch {
+    console.log('[line-webhook] 400: JSON解析失敗', bodyText.slice(0, 300));
     return new Response('Bad Request', { status: 400 });
   }
 
   const events = payload.events || [];
+  console.log(`[line-webhook] 署名OK、イベント数: ${events.length}`, JSON.stringify(payload).slice(0, 500));
   for (const event of events) {
     if (event.type === 'message' && event.replyToken && event.source && event.source.userId) {
       const userId = event.source.userId;
-      await fetch('https://api.line.me/v2/bot/message/reply', {
+      const replyRes = await fetch('https://api.line.me/v2/bot/message/reply', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -217,6 +225,10 @@ async function handleLineWebhook(request, env) {
           ],
         }),
       });
+      const replyText = await replyRes.text().catch(() => '(本文取得失敗)');
+      console.log(`[line-webhook] reply API結果: status=${replyRes.status}`, replyText.slice(0, 300));
+    } else {
+      console.log('[line-webhook] message以外のイベントのためスキップ:', event.type);
     }
   }
 
