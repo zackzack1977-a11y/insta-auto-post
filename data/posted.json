@@ -51,6 +51,12 @@
     "photo": "サーモンとマッシュルームのクリーム煮.jpg",
     "creationId": "18428725231182105",
     "presentedAt": "2026-09-14T03:21:59.225Z",
+    "confirmed": true
+  },
+  {
+    "photo": "シーフードトマトパスタ.jpg",
+    "creationId": "18428752333182105",
+    "presentedAt": "2026-09-14T07:33:36.064Z",
     "confirmed": false
   }
 ]
