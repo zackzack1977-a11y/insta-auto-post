@@ -13,7 +13,6 @@ const {
 
 const MUSIC_DIR = path.join(ROOT, 'music');
 const GENERATED_DIR = path.join(ROOT, 'generated');
-const VIDEO_SECONDS = 15;
 // Instagramのメディアコンテナは作成からおよそ24時間で失効する。
 // LINEリンクの有効期限はそれより少し短く設定し、期限切れの表示を
 // Instagram側の分かりにくいエラーより先に、こちらの分かりやすい文言で出す。
@@ -178,24 +177,6 @@ CAPTION:
   };
 }
 
-function findJapaneseFont() {
-  const fontPath = execFileSync('fc-match', [':lang=ja', '-f', '%{file}']).toString().trim();
-  if (!fontPath || !fs.existsSync(fontPath)) {
-    throw new Error('日本語フォントが見つかりません。fonts-noto-cjkをインストールしてください。');
-  }
-  // fc-matchは日本語フォントが1つも無い環境でも必ず何かしらのフォントを返してしまうため、
-  // パスの存在確認だけでは不十分。返ってきたフォント名自体にCJK対応の手がかり
-  // (noto/cjk/ipa/source han/takao等)が含まれているかも確認し、豆腐文字の動画を
-  // 黙って生成してしまう事故を防ぐ。
-  const fontName = execFileSync('fc-match', [':lang=ja']).toString().trim();
-  if (!/noto|cjk|ipa|source\s*han|takao|migu|ms\s*gothic|meiryo|yu\s*gothic/i.test(fontName)) {
-    throw new Error(
-      `日本語対応フォントが見つかりません(fc-matchの結果: ${fontName})。fonts-noto-cjkをインストールしてください。`
-    );
-  }
-  return fontPath;
-}
-
 function getVideoDurationSeconds(videoPath) {
   const out = execFileSync('ffprobe', [
     '-v', 'error',
@@ -234,66 +215,6 @@ function addMusicToVideo(inputVideoPath, musicPath, outputPath) {
     '-shortest',
     outputPath,
   ], { stdio: 'inherit' });
-}
-
-function buildVideo(imagePath, overlayText, musicPath, outputPath) {
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-
-  const textFile = outputPath + '.overlay.txt';
-  fs.writeFileSync(textFile, overlayText, 'utf8');
-
-  const fontFile = findJapaneseFont();
-  const fps = 30;
-  const totalFrames = VIDEO_SECONDS * fps;
-  const zoomPerFrame = (0.2 / totalFrames).toFixed(6);
-
-  // 前フレームのzoom値を自己参照する書き方(zoom+...)は、-loop 1の静止画入力と組み合わせると
-  // 初回フレームから最大ズームに飛んでしまう既知の不具合があるため、絶対フレーム番号(on)を使って
-  // 毎フレームのズーム量を直接計算する(1から始まり、totalFramesかけて1.2まで一定速度で増える)
-  const zoompan = `zoompan=z='min(1+on*${zoomPerFrame},1.2)':d=1:s=1080x1920:fps=${fps}`;
-  const drawtext = [
-    `drawtext=textfile='${textFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'`,
-    `fontfile='${fontFile.replace(/\\/g, '/').replace(/:/g, '\\:')}'`,
-    'fontsize=54',
-    'fontcolor=white',
-    'borderw=3',
-    'bordercolor=black@0.7',
-    'shadowcolor=black@0.4',
-    'shadowx=2',
-    'shadowy=2',
-    'x=(w-text_w)/2',
-    'y=h-300',
-  ].join(':');
-
-  // 横長の写真をそのままscale+cropで9:16にすると左右が大きく切り取られ、
-  // 「何の写真か分からないほどアップ」になってしまう。そのため、
-  // ぼかして拡大した背景の上に、写真全体を欠けさせずに縮小したものを重ねる
-  // (レターボックス+ぼかし背景)方式にする。どんな縦横比の写真でも全体が映る。
-  const filterComplex =
-    `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=30,eq=brightness=-0.08[bg];` +
-    `[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];` +
-    `[bg][fg]overlay=(W-w)/2:(H-h)/2,${zoompan},${drawtext}[v]`;
-
-  execFileSync('ffmpeg', [
-    '-y',
-    '-loop', '1',
-    '-framerate', String(fps),
-    '-i', imagePath,
-    '-stream_loop', '-1',
-    '-i', musicPath,
-    '-filter_complex', filterComplex,
-    '-map', '[v]',
-    '-map', '1:a',
-    '-t', String(VIDEO_SECONDS),
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac',
-    '-af', 'afade=t=out:st=' + (VIDEO_SECONDS - 1) + ':d=1',
-    '-shortest',
-    outputPath,
-  ], { stdio: 'inherit' });
-
-  fs.rmSync(textFile);
 }
 
 async function waitUntilMediaReady(creationId, attempts = 60, intervalMs = 10000) {
@@ -350,10 +271,7 @@ function signPublishToken(creationId, timestamp) {
   return crypto.createHmac('sha256', PUBLISH_SIGNING_SECRET).update(`${creationId}.${timestamp}`).digest('hex');
 }
 
-async function sendLineNotification(dishName, caption, publishUrl, expiresAt, usedFallback) {
-  const fallbackWarning = usedFallback
-    ? '⚠️ Genspark動画が見つからなかったため、簡易版(写真をぼかしただけの背景)の動画になっています。\n\n'
-    : '';
+async function sendLineNotification(dishName, caption, publishUrl, expiresAt) {
   const expiresAtJst = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo',
     dateStyle: 'short',
@@ -361,7 +279,6 @@ async function sendLineNotification(dishName, caption, publishUrl, expiresAt, us
   }).format(expiresAt);
   const text =
     `【Instagram投稿の確認】\n${dishName}\n\n` +
-    fallbackWarning +
     `${caption}\n\n` +
     `内容を確認して問題なければ、このリンクをタップすると投稿されます:\n${publishUrl}\n\n` +
     `⏰ このリンクは ${expiresAtJst}(日本時間)頃までが期限です。期限切れになった場合、この写真は自動で次回投稿の候補に戻ります。`;
@@ -386,6 +303,39 @@ async function sendLineNotification(dishName, caption, publishUrl, expiresAt, us
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`LINE通知エラー: ${errText}`);
+  }
+}
+
+// Genspark動画がまだ用意できていない写真が選ばれた場合、無理に(ffmpegの簡易動画で)
+// 投稿はせず、投稿を見送ったことだけをLINEに知らせる。posted.jsonには記録しないため、
+// この写真は次回以降も引き続き候補として残る(「作り置き」バッチが追いつくのを待つ)。
+async function sendSkipNotification(dishName) {
+  const text =
+    `【Instagram投稿を見送りました】\n` +
+    `本日投稿予定だった「${dishName}」について、Genspark動画がまだ用意できていなかったため、今回の投稿は見送りました。\n\n` +
+    `作り置き(毎日10時に自動生成)が追いつき次第、次回以降の実行で自動的に投稿されます。`;
+
+  if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_USER_ID) {
+    console.warn('LINE_USER_ID/LINE_CHANNEL_ACCESS_TOKEN未設定のため、見送り通知は送信できません。');
+    return;
+  }
+
+  const body = JSON.stringify({ to: LINE_USER_ID, messages: [{ type: 'text', text }] });
+  const res = await fetchWithRetry(
+    'https://api.line.me/v2/bot/message/push',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+      body: Buffer.from(body, 'utf8'),
+    },
+    { label: 'LINE見送り通知' }
+  );
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`LINE見送り通知エラー: ${errText}`);
   }
 }
 
@@ -483,46 +433,43 @@ async function main() {
   }
 
   console.log(`投稿対象: ${photo}`);
-  const imagePath = path.join(PHOTOS_DIR, photo);
+  const dishName = dishNameFromFilename(photo);
 
+  // Gensparkなどで事前に作った動画が無ければ、ffmpegで簡易動画を作って無理に投稿する
+  // ことはせず、今回は投稿を見送る(「作り置き」バッチが追いつくのを待つ)。
+  // posted.jsonには一切記録しないので、この写真は次回以降も引き続き候補に残る。
+  const premadePath = findPremadeVideoPath(photo);
+  if (!premadePath) {
+    console.log(`Genspark動画がまだ用意されていないため、今回は投稿を見送ります: ${photo}`);
+    await sendSkipNotification(dishName || photo);
+    console.log('LINEに見送りの通知を送信しました。');
+    return;
+  }
+
+  const imagePath = path.join(PHOTOS_DIR, photo);
   const noteFile = path.join(PHOTOS_DIR, path.parse(photo).name + '.txt');
   const noteText = fs.existsSync(noteFile) ? fs.readFileSync(noteFile, 'utf8').trim() : null;
-  const dishName = dishNameFromFilename(photo);
   const dishNote = noteText || (dishName ? `料理名: ${dishName}` : null);
   console.log('料理情報として使用: ' + (dishNote ?? '(なし)'));
 
-  const { overlayText, caption } = await generateCaptionAndOverlay(imagePath, dishNote);
-  console.log('動画テキスト: ' + overlayText);
+  const { caption } = await generateCaptionAndOverlay(imagePath, dishNote);
   console.log('生成されたキャプション:\n' + caption);
 
   const videoName = path.parse(photo).name + '.mp4';
   const branch = GITHUB_REF_NAME || 'master';
+  const generatedVideoPath = path.join(GENERATED_DIR, videoName);
 
   git(['config', 'user.name', 'insta-auto-post-bot']);
   git(['config', 'user.email', 'actions@github.com']);
 
-  // Gensparkなどで事前に作った高品質な動画がvideos/に置いてあれば、
-  // ffmpegでの自動生成(Ken Burns風のズーム)は行わずそちらを優先して使う。
-  const premadePath = findPremadeVideoPath(photo);
-  const generatedVideoPath = path.join(GENERATED_DIR, videoName);
-  let usedFfmpegFallback = false;
-
   const musicPath = pickRandomMusic();
   console.log('使用するBGM: ' + path.basename(musicPath));
 
-  if (premadePath) {
-    console.log('事前生成済みの動画を使用します: ' + premadePath);
-    addMusicToVideo(premadePath, musicPath, generatedVideoPath);
-    console.log('Genspark動画にBGMを合成しました: ' + generatedVideoPath);
-    git(['add', path.relative(ROOT, generatedVideoPath)]);
-    git(['commit', '-m', `動画にBGMを合成: ${videoName}`]);
-  } else {
-    usedFfmpegFallback = true;
-    buildVideo(imagePath, overlayText, musicPath, generatedVideoPath);
-    console.log('動画を生成しました(ffmpegフォールバック): ' + generatedVideoPath);
-    git(['add', path.relative(ROOT, generatedVideoPath)]);
-    git(['commit', '-m', `動画を生成: ${videoName}`]);
-  }
+  console.log('事前生成済みの動画を使用します: ' + premadePath);
+  addMusicToVideo(premadePath, musicPath, generatedVideoPath);
+  console.log('Genspark動画にBGMを合成しました: ' + generatedVideoPath);
+  git(['add', path.relative(ROOT, generatedVideoPath)]);
+  git(['commit', '-m', `動画にBGMを合成: ${videoName}`]);
   pushWithRebase(branch);
 
   // raw.githubusercontent.comはURL単位でキャッシュするため、push直後の404や
@@ -556,7 +503,7 @@ async function main() {
   const publishUrl = `${PUBLISH_WORKER_URL}?id=${encodeURIComponent(creationId)}&ts=${timestamp}&sig=${sig}`;
   const expiresAt = new Date(timestamp + PUBLISH_LINK_EXPIRY_MS);
 
-  await sendLineNotification(dishName || photo, caption, publishUrl, expiresAt, usedFfmpegFallback);
+  await sendLineNotification(dishName || photo, caption, publishUrl, expiresAt);
   console.log('LINEに確認通知を送信しました。実際の投稿はたけしさんがリンクをタップするまで行われません。');
 }
 
