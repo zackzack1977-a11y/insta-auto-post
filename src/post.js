@@ -25,6 +25,7 @@ const {
   ANTHROPIC_API_KEY,
   GITHUB_REPOSITORY,
   GITHUB_REF_NAME,
+  GITHUB_EVENT_NAME,
   LINE_CHANNEL_ACCESS_TOKEN,
   LINE_USER_ID,
   PUBLISH_SIGNING_SECRET,
@@ -48,6 +49,27 @@ function getHeadSha() {
 function pushWithRebase(branch) {
   git(['pull', '--rebase', '--autostash', 'origin', branch]);
   git(['push', 'origin', branch]);
+}
+
+// actions/checkoutは「ワークフローがトリガーされた時点」のコミットをcheckoutする。
+// concurrencyグループで実行が順番待ちになっている間に前の実行がposted.jsonを
+// push していても、その情報は反映されないまま古いスナップショットで動いてしまう
+// (これが原因で、手動実行を短時間に2回叩くと同じ写真が二重にLINE提示される
+// 事故が2026-09-14に発生した)。実際の処理を始める前に必ずorigin最新へ
+// 同期することで、posted.jsonを常に最新の状態で読む。
+function syncToLatestOrigin(branch) {
+  git(['fetch', 'origin', branch]);
+  git(['reset', '--hard', `origin/${branch}`]);
+}
+
+// 日本時間でのYYYY-MM-DD文字列を返す(日次ガードの判定に使う)。
+function todayJst() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
+}
+
+function presentedDateJst(isoString) {
+  if (!isoString) return null;
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date(isoString));
 }
 
 // 429(レート制限)・5xx(サーバ側の一時的な障害)・ネットワークエラーの場合のみ
@@ -404,9 +426,16 @@ async function reconcilePresentedPhotos() {
       } else if (res.ok && json && (json.status_code === 'EXPIRED' || json.status_code === 'ERROR')) {
         console.log(`${entry.photo} は公開されないまま期限切れ/エラーになったため、候補に戻します。`);
         changed = true; // このエントリを落とす(next.pushしない)
-      } else if (!res.ok) {
-        console.log(`${entry.photo} のコンテナ確認に失敗(削除済み等)。候補に戻します: ${JSON.stringify(json)}`);
+      } else if ((res.status === 400 || res.status === 404) && json) {
+        // Graph APIがコンテナIDそのものを「存在しない」と明確に応答した場合のみ
+        // 消滅扱いにする。401(認証エラー)・429・5xx・パース不能な応答は、コンテナが
+        // 本当に消えたのか一時的な障害なのか区別できないため、誤って正規の
+        // 提示済みエントリを消してしまわないよう安全側に倒して保持する。
+        console.log(`${entry.photo} のコンテナが見つかりませんでした(削除済み等)。候補に戻します: ${JSON.stringify(json)}`);
         changed = true;
+      } else if (!res.ok) {
+        console.warn(`${entry.photo} のコンテナ確認が失敗(HTTP ${res.status})。一時的な障害の可能性があるため今回は判断を保留します。`);
+        next.push(entry);
       } else {
         // FINISHED / IN_PROGRESS 等: まだリンクの期限内かもしれないので保持
         next.push(entry);
@@ -423,7 +452,24 @@ async function reconcilePresentedPhotos() {
 let currentPhotoForErrorReport = null;
 
 async function main() {
+  const branch = GITHUB_REF_NAME || 'master';
+  git(['config', 'user.name', 'insta-auto-post-bot']);
+  git(['config', 'user.email', 'actions@github.com']);
+  syncToLatestOrigin(branch);
+
   await reconcilePresentedPhotos();
+
+  // 定例スケジュール実行では、本日すでに何か(手動実行分も含む)LINE提示済みなら
+  // 今日はそれ以上増やさずスキップする。手動実行(workflow_dispatch)は
+  // 「今日だけの例外」的な使われ方をするため、このガードの対象外とする。
+  if (GITHUB_EVENT_NAME === 'schedule') {
+    const today = todayJst();
+    const alreadyToday = loadPostedList().some((entry) => presentedDateJst(entry.presentedAt) === today);
+    if (alreadyToday) {
+      console.log(`本日(${today})は既に投稿を提示済みのため、定例実行は今回スキップします。`);
+      return;
+    }
+  }
 
   const photo = pickNextPhoto();
   currentPhotoForErrorReport = photo;
@@ -456,11 +502,7 @@ async function main() {
   console.log('生成されたキャプション:\n' + caption);
 
   const videoName = path.parse(photo).name + '.mp4';
-  const branch = GITHUB_REF_NAME || 'master';
   const generatedVideoPath = path.join(GENERATED_DIR, videoName);
-
-  git(['config', 'user.name', 'insta-auto-post-bot']);
-  git(['config', 'user.email', 'actions@github.com']);
 
   const musicPath = pickRandomMusic();
   console.log('使用するBGM: ' + path.basename(musicPath));
