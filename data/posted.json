@@ -1,10 +1,56 @@
 [
-  "牛ハラミのグリル赤ワインソース.jpg",
-  "蝦夷鹿のロースト - コピー.jpg",
-  "かつおだしの和風カルボナーラ.jpg",
-  "から揚げのチリソース和え.jpg",
-  "とろとろに煮込んだブロック豚肉のデミグラスソース煮込み.jpg",
-  "とろとろ卵のオムライス、特製デミグラスソース.jpg",
-  "シーザーサラダ.jpg",
-  "カマンベールのフォデュー風.jpg"
+  {
+    "photo": "牛ハラミのグリル赤ワインソース.jpg",
+    "creationId": null,
+    "presentedAt": null,
+    "confirmed": true
+  },
+  {
+    "photo": "蝦夷鹿のロースト - コピー.jpg",
+    "creationId": null,
+    "presentedAt": null,
+    "confirmed": true
+  },
+  {
+    "photo": "かつおだしの和風カルボナーラ.jpg",
+    "creationId": null,
+    "presentedAt": null,
+    "confirmed": true
+  },
+  {
+    "photo": "から揚げのチリソース和え.jpg",
+    "creationId": null,
+    "presentedAt": null,
+    "confirmed": true
+  },
+  {
+    "photo": "とろとろに煮込んだブロック豚肉のデミグラスソース煮込み.jpg",
+    "creationId": null,
+    "presentedAt": null,
+    "confirmed": true
+  },
+  {
+    "photo": "とろとろ卵のオムライス、特製デミグラスソース.jpg",
+    "creationId": null,
+    "presentedAt": null,
+    "confirmed": true
+  },
+  {
+    "photo": "シーザーサラダ.jpg",
+    "creationId": null,
+    "presentedAt": null,
+    "confirmed": true
+  },
+  {
+    "photo": "カマンベールのフォデュー風.jpg",
+    "creationId": null,
+    "presentedAt": null,
+    "confirmed": true
+  },
+  {
+    "photo": "サーモンとマッシュルームのクリーム煮.jpg",
+    "creationId": "18428717875182105",
+    "presentedAt": "2026-09-14T02:16:31.111Z",
+    "confirmed": false
+  }
 ]
