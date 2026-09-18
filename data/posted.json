@@ -63,6 +63,12 @@
     "photo": "シーフードと明太子のパスタ.jpg",
     "creationId": "18429063004182105",
     "presentedAt": "2026-09-16T02:17:11.899Z",
+    "confirmed": true
+  },
+  {
+    "photo": "シャルキュトリー盛り合わせ.jpg",
+    "creationId": "18429387127182105",
+    "presentedAt": "2026-09-18T02:16:22.419Z",
     "confirmed": false
   }
 ]
