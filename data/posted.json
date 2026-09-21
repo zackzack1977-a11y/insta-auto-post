@@ -69,6 +69,12 @@
     "photo": "シャルキュトリー盛り合わせ.jpg",
     "creationId": "18429387127182105",
     "presentedAt": "2026-09-18T02:16:22.419Z",
+    "confirmed": true
+  },
+  {
+    "photo": "タコのガーリックカルパッチョ.jpg",
+    "creationId": "18429882325182105",
+    "presentedAt": "2026-09-21T02:16:16.800Z",
     "confirmed": false
   }
 ]
