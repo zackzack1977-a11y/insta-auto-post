@@ -75,6 +75,12 @@
     "photo": "タコのガーリックカルパッチョ.jpg",
     "creationId": "18429882325182105",
     "presentedAt": "2026-09-21T02:16:16.800Z",
+    "confirmed": true
+  },
+  {
+    "photo": "トマトたっぷりブルスケッタ.jpg",
+    "creationId": "18430192729182105",
+    "presentedAt": "2026-09-23T02:17:17.519Z",
     "confirmed": false
   }
 ]
