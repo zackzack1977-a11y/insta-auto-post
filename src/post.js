@@ -13,6 +13,9 @@ const {
 
 const MUSIC_DIR = path.join(ROOT, 'music');
 const GENERATED_DIR = path.join(ROOT, 'generated');
+// Food & Bar ZackのFacebookページID。位置情報タグにはそのままこのIDを使う
+// (location_idの実体は「その場所に紐づいたFacebookページのID」)。
+const STORE_LOCATION_ID = '192964207533951';
 // Instagramのメディアコンテナは作成からおよそ24時間で失効する。
 // LINEリンクの有効期限はそれより少し短く設定し、期限切れの表示を
 // Instagram側の分かりにくいエラーより先に、こちらの分かりやすい文言で出す。
@@ -275,6 +278,7 @@ async function createMediaContainer(videoUrl, caption) {
         media_type: 'REELS',
         video_url: videoUrl,
         caption,
+        location_id: STORE_LOCATION_ID,
         access_token: INSTAGRAM_ACCESS_TOKEN,
       }),
     },
