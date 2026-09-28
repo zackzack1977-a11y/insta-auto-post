@@ -24,7 +24,7 @@ const PUBLISH_LINK_EXPIRY_MS = 23 * 60 * 60 * 1000;
 
 const {
   INSTAGRAM_BUSINESS_ACCOUNT_ID,
-  INSTAGRAM_ACCESS_TOKEN,
+  FACEBOOK_PAGE_ACCESS_TOKEN,
   ANTHROPIC_API_KEY,
   GITHUB_REPOSITORY,
   GITHUB_REF_NAME,
@@ -245,7 +245,7 @@ function addMusicToVideo(inputVideoPath, musicPath, outputPath) {
 async function waitUntilMediaReady(creationId, attempts = 60, intervalMs = 10000) {
   for (let i = 0; i < attempts; i += 1) {
     const res = await fetchWithRetry(
-      `https://graph.instagram.com/v21.0/${creationId}?fields=status_code&access_token=${INSTAGRAM_ACCESS_TOKEN}`,
+      `https://graph.facebook.com/v21.0/${creationId}?fields=status_code&access_token=${FACEBOOK_PAGE_ACCESS_TOKEN}`,
       {},
       { label: 'メディア状態確認' }
     );
@@ -267,7 +267,7 @@ async function waitUntilMediaReady(creationId, attempts = 60, intervalMs = 10000
 }
 
 async function createMediaContainer(videoUrl, caption) {
-  const base = `https://graph.instagram.com/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}`;
+  const base = `https://graph.facebook.com/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}`;
 
   const createRes = await fetchWithRetry(
     `${base}/media`,
@@ -279,7 +279,7 @@ async function createMediaContainer(videoUrl, caption) {
         video_url: videoUrl,
         caption,
         location_id: STORE_LOCATION_ID,
-        access_token: INSTAGRAM_ACCESS_TOKEN,
+        access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
       }),
     },
     { retries: 1, label: 'Instagramメディア作成' } // POSTの再試行はコンテナ二重生成のリスクがあるため回数を絞る
@@ -412,7 +412,7 @@ async function reconcilePresentedPhotos() {
     }
     try {
       const res = await fetchWithRetry(
-        `https://graph.instagram.com/v21.0/${entry.creationId}?fields=status_code&access_token=${INSTAGRAM_ACCESS_TOKEN}`,
+        `https://graph.facebook.com/v21.0/${entry.creationId}?fields=status_code&access_token=${FACEBOOK_PAGE_ACCESS_TOKEN}`,
         {},
         { retries: 1, label: `コンテナ状態確認(${entry.photo})` }
       );

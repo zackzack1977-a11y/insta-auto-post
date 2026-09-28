@@ -54,7 +54,7 @@ GitHubリポジトリの「Actions」タブ→「Instagram自動投稿」→「R
 リポジトリの Settings → Secrets and variables → Actions → New repository secret で以下を登録する
 
 - `INSTAGRAM_BUSINESS_ACCOUNT_ID`
-- `INSTAGRAM_ACCESS_TOKEN`
+- `FACEBOOK_PAGE_ACCESS_TOKEN` — Facebookページ経由のアクセストークン(位置情報タグに対応するため2026-09-28からこの方式に変更)
 - `ANTHROPIC_API_KEY`
 - `LINE_CHANNEL_ACCESS_TOKEN` — LINE公式アカウントのチャンネルアクセストークン
 - `LINE_USER_ID` — **たけしさん個人**のLINEユーザーID(下記「LINE_USER_IDの調べ方」参照)
@@ -78,7 +78,7 @@ GitHubリポジトリの「Actions」タブ→「Instagram自動投稿」→「R
 
 - KVネームスペース `PUBLISH_KV` を作成し、`worker/wrangler.toml` の `[[kv_namespaces]]` にバインドする(同じリンクの連打・二重送信で二重投稿しないようにするため)
 - Workerシークレット(`npx wrangler secret put <名前>` で設定、値はGitHub Secretsと同じもの)
-  - `INSTAGRAM_ACCESS_TOKEN`
+  - `FACEBOOK_PAGE_ACCESS_TOKEN`
   - `INSTAGRAM_BUSINESS_ACCOUNT_ID`
   - `PUBLISH_SIGNING_SECRET`
   - `LINE_CHANNEL_ACCESS_TOKEN`

@@ -21,7 +21,7 @@
 //    (res.okがtrueならJSON解析に失敗しても「成功」として扱う)。
 //
 // 必要なWorkerシークレット(wrangler secret putで設定):
-//   INSTAGRAM_ACCESS_TOKEN          … insta-auto-postのGitHub Secretsと同じ値
+//   FACEBOOK_PAGE_ACCESS_TOKEN      … insta-auto-postのGitHub Secretsと同じ値(位置情報タグ対応のため2026-09-28にINSTAGRAM_ACCESS_TOKENから切り替え)
 //   INSTAGRAM_BUSINESS_ACCOUNT_ID   … insta-auto-postのGitHub Secretsと同じ値
 //   PUBLISH_SIGNING_SECRET          … insta-auto-postのGitHub Secretsと同じ値(署名検証用)
 //   LINE_CHANNEL_ACCESS_TOKEN       … LINE公式アカウントのチャンネルアクセストークン(/line-webhook用)
@@ -141,7 +141,7 @@ async function handlePublish(request, env) {
   let res;
   try {
     res = await fetch(
-      `https://graph.instagram.com/v21.0/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish?creation_id=${encodeURIComponent(id)}&access_token=${encodeURIComponent(env.INSTAGRAM_ACCESS_TOKEN)}`,
+      `https://graph.facebook.com/v21.0/${env.INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish?creation_id=${encodeURIComponent(id)}&access_token=${encodeURIComponent(env.FACEBOOK_PAGE_ACCESS_TOKEN)}`,
       { method: 'POST' }
     );
   } catch (err) {

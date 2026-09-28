@@ -2,14 +2,14 @@
 // 付いているかをInstagram Graph API経由で確認する。
 // トークンはGitHub Secrets(本番と同じ)から読むが、結果(location/caption等)は
 // 機密情報ではないためログにそのまま出力してよい。
-const { INSTAGRAM_ACCESS_TOKEN, MEDIA_ID } = process.env;
+const { FACEBOOK_PAGE_ACCESS_TOKEN, MEDIA_ID } = process.env;
 
 async function main() {
   if (!MEDIA_ID) {
     throw new Error('MEDIA_IDが指定されていません。');
   }
   const fields = process.env.FIELDS || 'id,location';
-  const url = `https://graph.instagram.com/v21.0/${MEDIA_ID}?fields=${fields}&access_token=${INSTAGRAM_ACCESS_TOKEN}`;
+  const url = `https://graph.facebook.com/v21.0/${MEDIA_ID}?fields=${fields}&access_token=${FACEBOOK_PAGE_ACCESS_TOKEN}`;
   const res = await fetch(url);
   const json = await res.json();
   console.log('HTTPステータス:', res.status);
