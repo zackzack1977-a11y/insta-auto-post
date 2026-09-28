@@ -6,6 +6,10 @@ on:
       media_id:
         description: '確認したいメディアID(creationId)'
         required: true
+      fields:
+        description: '取得したいフィールド(カンマ区切り)'
+        required: false
+        default: 'id,location'
 
 jobs:
   check:
@@ -21,4 +25,5 @@ jobs:
         env:
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           MEDIA_ID: ${{ github.event.inputs.media_id }}
+          FIELDS: ${{ github.event.inputs.fields }}
         run: node src/check-media.js
