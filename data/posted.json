@@ -87,6 +87,12 @@
     "photo": "ハムチーズ.jpg",
     "creationId": "18430525609182105",
     "presentedAt": "2026-09-25T02:16:16.825Z",
+    "confirmed": true
+  },
+  {
+    "photo": "ペペロンチーノ.jpg",
+    "creationId": "18431053651182105",
+    "presentedAt": "2026-09-28T08:10:21.181Z",
     "confirmed": false
   }
 ]
