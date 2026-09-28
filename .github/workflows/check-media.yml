@@ -1,0 +1,24 @@
+name: Instagram投稿の診断確認
+
+on:
+  workflow_dispatch:
+    inputs:
+      media_id:
+        description: '確認したいメディアID(creationId)'
+        required: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: メディア情報を確認
+        env:
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          MEDIA_ID: ${{ github.event.inputs.media_id }}
+        run: node src/check-media.js
