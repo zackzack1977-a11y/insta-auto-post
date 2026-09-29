@@ -54,12 +54,6 @@
     "confirmed": true
   },
   {
-    "photo": "シーフードトマトパスタ.jpg",
-    "creationId": "18428752333182105",
-    "presentedAt": "2026-09-14T07:33:36.064Z",
-    "confirmed": false
-  },
-  {
     "photo": "シーフードと明太子のパスタ.jpg",
     "creationId": "18429063004182105",
     "presentedAt": "2026-09-16T02:17:11.899Z",
@@ -94,5 +88,11 @@
     "creationId": "18431053651182105",
     "presentedAt": "2026-09-28T08:10:21.181Z",
     "confirmed": true
+  },
+  {
+    "photo": "シーフードトマトパスタ.jpg",
+    "creationId": "18431166244182105",
+    "presentedAt": "2026-09-29T00:37:47.002Z",
+    "confirmed": false
   }
 ]
