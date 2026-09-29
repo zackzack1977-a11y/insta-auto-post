@@ -10,6 +10,10 @@ on:
         description: '取得したいフィールド(カンマ区切り)'
         required: false
         default: 'id,location'
+      list:
+        description: '1にすると、media_idをIGユーザーIDとして扱い投稿一覧エッジ経由で取得する'
+        required: false
+        default: '0'
 
 jobs:
   check:
@@ -26,4 +30,5 @@ jobs:
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
           MEDIA_ID: ${{ github.event.inputs.media_id }}
           FIELDS: ${{ github.event.inputs.fields }}
+          LIST: ${{ github.event.inputs.list }}
         run: node src/check-media.js
