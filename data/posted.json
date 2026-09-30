@@ -93,6 +93,12 @@
     "photo": "シーフードトマトパスタ.jpg",
     "creationId": "18431166244182105",
     "presentedAt": "2026-09-29T00:37:47.002Z",
+    "confirmed": true
+  },
+  {
+    "photo": "マグロとアボカドのディップ.jpg",
+    "creationId": "18431360782182105",
+    "presentedAt": "2026-09-30T07:54:29.680Z",
     "confirmed": false
   }
 ]
