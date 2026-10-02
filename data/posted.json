@@ -99,6 +99,12 @@
     "photo": "マグロとアボカドのディップ.jpg",
     "creationId": "18431360782182105",
     "presentedAt": "2026-09-30T07:54:29.680Z",
+    "confirmed": true
+  },
+  {
+    "photo": "マグロユッケ.jpg",
+    "creationId": "18431684722182105",
+    "presentedAt": "2026-10-02T07:54:30.008Z",
     "confirmed": false
   }
 ]
