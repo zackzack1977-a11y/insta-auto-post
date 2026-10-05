@@ -105,6 +105,12 @@
     "photo": "マグロユッケ.jpg",
     "creationId": "18431684722182105",
     "presentedAt": "2026-10-02T07:54:30.008Z",
+    "confirmed": true
+  },
+  {
+    "photo": "マッシュルームフライわさびタルタルソース (2).jpg",
+    "creationId": "18432183517182105",
+    "presentedAt": "2026-10-05T08:14:14.157Z",
     "confirmed": false
   }
 ]
