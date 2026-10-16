@@ -1,0 +1,49 @@
+name: 公開後の見え方チェック
+
+# たけしさんがLINEの「投稿する」を押したら、Instagramに実際に上がった動画を取り寄せて、
+# 崩れていないかを調べ、LINEで知らせる(src/verify-published.js)。2026-10-16追加。
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# 投稿の実行と同じグループにして、posted.jsonの書き換えがぶつからないようにする
+concurrency:
+  group: insta-auto-post
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 確認待ちの投稿があるか見る
+        id: pending
+        run: |
+          node -e "const {loadPostedList}=require('./src/shared');const n=Date.now();const t=loadPostedList().filter(e=>e.creationId&&e.presentedAt&&!e.verified&&n-Date.parse(e.presentedAt)<30*3600*1000);console.log('count='+t.length)" >> "$GITHUB_OUTPUT"
+
+      - name: ffmpegをインストール
+        if: steps.pending.outputs.count != '0'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: 公開後の見え方をチェック
+        if: steps.pending.outputs.count != '0'
+        env:
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: |
+          git config user.name "insta-auto-post-bot"
+          git config user.email "actions@github.com"
+          node src/verify-published.js
