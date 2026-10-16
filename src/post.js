@@ -217,8 +217,8 @@ function getVideoDurationSeconds(videoPath) {
 }
 
 // Genspark等で生成した動画は音楽を付けずに(無音で)作ってもらう運用にしているため、
-// ここでmusicフォルダからランダムに選んだ音源を合成する。映像はそのまま(再エンコードなし)、
-// 音声トラックだけを差し替える(元動画に音声があっても無視して上書きする)。
+// ここでmusicフォルダからランダムに選んだ音源を合成する。音声トラックは差し替え(元動画に音声があっても無視して上書きする)、
+// 映像はInstagramで崩れないよう再エンコードする(下のコメント参照)。
 // BGMの方が動画より短いケースがあるため、音声を無限ループさせたうえで
 // -shortest(=映像の長さ)で切る。これにより「BGMが短いせいで動画自体が
 // 切り詰められる」事故を防ぐ(逆に音声が長い場合は従来通り-shortestで映像長に合わせる)。
@@ -234,8 +234,25 @@ function addMusicToVideo(inputVideoPath, musicPath, outputPath) {
     '-i', musicPath,
     '-map', '0:v:0',
     '-map', '1:a:0',
-    '-c:v', 'copy',
+    // 映像も作り直す(再エンコード)。2026-10-16、Gensparkの出力の作りが変わり(作成ソフトの表記が
+    // 「ISO Media file produced by Google」、色の情報にsRGB用の値が入る)、それをそのままコピーして
+    // 投稿したら、Instagram側で作り直されたときに画面の下半分がピンクや緑のノイズに崩れた。
+    // 9月までのGenspark動画(そのままコピーで問題なし)とは、この作りと色の情報だけが違っていた。
+    // Instagramの推奨どおりの、ごく普通のH.264(色はBT.709、1秒ごとに区切りのコマ、先頭にファイル情報)にそろえる
+    '-c:v', 'libx264',
+    '-colorspace', 'bt709',
+    '-color_primaries', 'bt709',
+    '-color_trc', 'bt709',
+    '-color_range', 'tv',
+    '-preset', 'medium',
+    '-crf', '18',
+    '-pix_fmt', 'yuv420p',
+    '-profile:v', 'high',
+    '-level', '4.0',
+    '-g', '24',
+    '-movflags', '+faststart',
     '-c:a', 'aac',
+    '-ar', '48000',
     '-af', `afade=t=out:st=${fadeStart}:d=1`,
     '-shortest',
     outputPath,
