@@ -117,6 +117,12 @@
     "photo": "もやしとブロッコリーのアーリオオーリオ.jpg",
     "creationId": "18432498205182105",
     "presentedAt": "2026-10-07T08:07:33.266Z",
+    "confirmed": true
+  },
+  {
+    "photo": "マッシュルームとベーコンのパスタ.jpg",
+    "creationId": "18433994908182105",
+    "presentedAt": "2026-10-16T06:42:17.630Z",
     "confirmed": false
   }
 ]
