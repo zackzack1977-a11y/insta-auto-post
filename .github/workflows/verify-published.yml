@@ -10,9 +10,11 @@ on:
 permissions:
   contents: write
 
-# 投稿の実行と同じグループにして、posted.jsonの書き換えがぶつからないようにする
+# 投稿の実行(insta-auto-post)とは別のグループにする。同じにすると、10分おきのこのチェックが、
+# 順番待ちの投稿の実行を取り消してしまう(GitHubは同じグループの待ちを1つしか持たない)。
+# posted.jsonの書き換えのぶつかりは、pull --rebaseで吸収する
 concurrency:
-  group: insta-auto-post
+  group: insta-verify
   cancel-in-progress: false
 
 jobs:
