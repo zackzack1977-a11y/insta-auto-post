@@ -569,8 +569,11 @@ async function main() {
   const videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/generated/${encodeURIComponent(videoName)}?v=${headSha}`;
 
   // LINEで見せる用のURLは、ブランチ名ではなくコミットSHAで指す。このあと生成ファイルを消しても、
-  // そのコミットの中身はずっと残るので、確認のリンクが後から切れない
-  const permanentBase = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${headSha}/generated/`;
+  // そのコミットの中身はずっと残るので、確認のリンクが後から切れない。
+  // raw.githubusercontent.comは動画を「ただのファイル(application/octet-stream)」として返すため、
+  // スマホで開いても再生されなかった(2026-10-16)。jsDelivr(GitHubの公開リポジトリを配るCDN)は
+  // video/mp4で返すので、そのまま再生できる
+  const permanentBase = `https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@${headSha}/generated/`;
   const lineVideoUrl = permanentBase + encodeURIComponent(videoName);
   const linePreviewUrl = permanentBase + encodeURIComponent(previewName);
 
