@@ -17,10 +17,16 @@ const limit = Math.max(1, parseInt(process.argv[2], 10) || 4);
 
 const posted = new Set(loadPostedList().map((entry) => entry.photo));
 
+// 動画づくりを当分見送る写真(data/video-skip.json、写真ファイル名の配列)。
+// 写真の外側をAIが想像で描いて崩れやすい写真などを、たけしさんの判断で外す(2026-10-16追加)
+const skipFile = path.join(__dirname, '..', 'data', 'video-skip.json');
+const skipped = new Set(fs.existsSync(skipFile) ? JSON.parse(fs.readFileSync(skipFile, 'utf8')).map((e) => e.photo) : []);
+
 const candidates = fs
   .readdirSync(PHOTOS_DIR)
   .filter((f) => IMAGE_EXTENSIONS.has(path.extname(f).toLowerCase()))
   .filter((f) => !posted.has(f))
+  .filter((f) => !skipped.has(f))
   .filter((f) => !findPremadeVideoPath(f))
   .sort((a, b) => a.localeCompare(b, 'ja'))
   .slice(0, limit);
