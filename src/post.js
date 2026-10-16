@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const {
   ROOT,
   PHOTOS_DIR,
@@ -297,7 +297,31 @@ function signPublishToken(creationId, timestamp) {
   return crypto.createHmac('sha256', PUBLISH_SIGNING_SECRET).update(`${creationId}.${timestamp}`).digest('hex');
 }
 
-async function sendLineNotification(dishName, caption, publishUrl, expiresAt) {
+// 確認通知の前に、投稿する動画そのものをLINEに送る(その場で再生して、崩れていないか見られるように)。
+// 2026-10-16、崩れた動画を中身を見ないまま「投稿する」してしまったことを受けて追加。
+// 動画メッセージがLINE側で受け付けられなくても、確認通知(本文)は必ず届くように、別送・失敗は無視する。
+async function sendLineVideoPreview(videoUrl, previewImageUrl) {
+  if (!LINE_USER_ID || !LINE_CHANNEL_ACCESS_TOKEN) return;
+  try {
+    const body = JSON.stringify({
+      to: LINE_USER_ID,
+      messages: [{ type: 'video', originalContentUrl: videoUrl, previewImageUrl }],
+    });
+    const res = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+      body: Buffer.from(body, 'utf8'),
+    });
+    if (!res.ok) console.warn('LINEへの動画の送信に失敗しました(確認通知は続けて送ります): ' + (await res.text()));
+  } catch (e) {
+    console.warn('LINEへの動画の送信に失敗しました(確認通知は続けて送ります): ' + e.message);
+  }
+}
+
+async function sendLineNotification(dishName, caption, publishUrl, expiresAt, videoUrl) {
   const expiresAtJst = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo',
     dateStyle: 'short',
@@ -306,6 +330,7 @@ async function sendLineNotification(dishName, caption, publishUrl, expiresAt) {
   const text =
     `【Instagram投稿の確認】\n${dishName}\n\n` +
     `${caption}\n\n` +
+    `🎬 投稿する動画(すぐ上の動画、またはこのリンクで再生できます。崩れていないか見てください):\n${videoUrl}\n\n` +
     `内容を確認して問題なければ、このリンクをタップすると投稿されます:\n${publishUrl}\n\n` +
     `⏰ このリンクは ${expiresAtJst}(日本時間)頃までが期限です。期限切れになった場合、この写真は自動で次回投稿の候補に戻ります。`;
 
@@ -335,10 +360,10 @@ async function sendLineNotification(dishName, caption, publishUrl, expiresAt) {
 // Genspark動画がまだ用意できていない写真が選ばれた場合、無理に(ffmpegの簡易動画で)
 // 投稿はせず、投稿を見送ったことだけをLINEに知らせる。posted.jsonには記録しないため、
 // この写真は次回以降も引き続き候補として残る(「作り置き」バッチが追いつくのを待つ)。
-async function sendSkipNotification(dishName) {
+async function sendSkipNotification(dishName, reason = 'Genspark動画がまだ用意できていなかった') {
   const text =
     `【Instagram投稿を見送りました】\n` +
-    `本日投稿予定だった「${dishName}」について、Genspark動画がまだ用意できていなかったため、今回の投稿は見送りました。\n\n` +
+    `本日投稿予定だった「${dishName}」について、${reason}ため、今回の投稿は見送りました。\n\n` +
     `作り置き(毎日10時に自動生成)が追いつき次第、次回以降の実行で自動的に投稿されます。`;
 
   if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_USER_ID) {
@@ -512,9 +537,28 @@ async function main() {
   console.log('使用するBGM: ' + path.basename(musicPath));
 
   console.log('事前生成済みの動画を使用します: ' + premadePath);
+
+  // 投稿の前に、動画が崩れていないかを機械でチェックする(2026-10-16追加。src/check-video.js)。
+  // 崩れていたら投稿せず、その動画をvideos/から外して(翌日の作り置きで作り直される)、LINEで知らせる。
+  const check = spawnSync(process.execPath, [path.join(__dirname, 'check-video.js'), premadePath], { encoding: 'utf8' });
+  console.log(check.stdout);
+  if (check.status !== 0) {
+    const reason = (check.stdout || '').split('\n').filter((l) => l.startsWith('・')).join(' ') || '理由不明';
+    git(['rm', '-q', path.relative(ROOT, premadePath)]);
+    git(['commit', '-m', `崩れた動画を外す(作り直し待ち): ${path.basename(premadePath)}`]);
+    pushWithRebase(branch);
+    await sendSkipNotification(dishName || photo, `動画が崩れていた(${reason})`);
+    console.log('動画のチェックで不合格のため、投稿を見送りました。');
+    return;
+  }
+
   addMusicToVideo(premadePath, musicPath, generatedVideoPath);
   console.log('Genspark動画にBGMを合成しました: ' + generatedVideoPath);
-  git(['add', path.relative(ROOT, generatedVideoPath)]);
+  // LINEの動画メッセージ用の小さな表紙画像(1秒目のコマ)。LINEの表紙画像は1MBまでのため縮小する
+  const previewName = path.parse(photo).name + '_preview.jpg';
+  const previewPath = path.join(GENERATED_DIR, previewName);
+  execFileSync('ffmpeg', ['-y', '-v', 'error', '-ss', '1', '-i', generatedVideoPath, '-frames:v', '1', '-vf', 'scale=360:-1', previewPath]);
+  git(['add', path.relative(ROOT, generatedVideoPath), path.relative(ROOT, previewPath)]);
   git(['commit', '-m', `動画にBGMを合成: ${videoName}`]);
   pushWithRebase(branch);
 
@@ -524,6 +568,12 @@ async function main() {
   const headSha = getHeadSha();
   const videoUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${branch}/generated/${encodeURIComponent(videoName)}?v=${headSha}`;
 
+  // LINEで見せる用のURLは、ブランチ名ではなくコミットSHAで指す。このあと生成ファイルを消しても、
+  // そのコミットの中身はずっと残るので、確認のリンクが後から切れない
+  const permanentBase = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${headSha}/generated/`;
+  const lineVideoUrl = permanentBase + encodeURIComponent(videoName);
+  const linePreviewUrl = permanentBase + encodeURIComponent(previewName);
+
   const creationId = await createMediaContainer(videoUrl, caption);
   console.log('Instagram側で公開準備が完了しました(まだ非公開): ' + creationId);
 
@@ -532,6 +582,7 @@ async function main() {
   // (LINE送信〜最終pushの間で失敗すると、次回同じ写真が再選択され二重にLINEが
   // 飛んでしまう可能性があったため、記録を先に確定させる)
   fs.rmSync(generatedVideoPath);
+  fs.rmSync(previewPath);
   const postedList = loadPostedList();
   postedList.push({
     photo,
@@ -540,7 +591,7 @@ async function main() {
     confirmed: false,
   });
   savePostedList(postedList);
-  git(['add', path.relative(ROOT, generatedVideoPath), path.relative(ROOT, path.join(ROOT, 'data', 'posted.json'))]);
+  git(['add', path.relative(ROOT, generatedVideoPath), path.relative(ROOT, previewPath), path.relative(ROOT, path.join(ROOT, 'data', 'posted.json'))]);
   git(['commit', '-m', `投稿履歴を更新・生成ファイルを削除: ${photo}`]);
   pushWithRebase(branch);
 
@@ -549,7 +600,8 @@ async function main() {
   const publishUrl = `${PUBLISH_WORKER_URL}?id=${encodeURIComponent(creationId)}&ts=${timestamp}&sig=${sig}`;
   const expiresAt = new Date(timestamp + PUBLISH_LINK_EXPIRY_MS);
 
-  await sendLineNotification(dishName || photo, caption, publishUrl, expiresAt);
+  await sendLineVideoPreview(lineVideoUrl, linePreviewUrl);
+  await sendLineNotification(dishName || photo, caption, publishUrl, expiresAt, lineVideoUrl);
   console.log('LINEに確認通知を送信しました。実際の投稿はたけしさんがリンクをタップするまで行われません。');
 }
 
