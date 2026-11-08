@@ -505,7 +505,8 @@ async function main() {
 
   // 料理名(大きく)と「富士駅から徒歩10分」(小さく)を動画に入れ、BGMを合成する(2026-11-08、文字入れを追加)。
   const workDir = path.join(GENERATED_DIR, 'work');
-  renderFinalVideo(premadePath, musicPath, generatedVideoPath, { dishName: dishName || path.parse(photo).name, workDir });
+  // デザインはB案(手書き風カフェ: Klee One+筆記体のToday's Special、fonts/に同梱)。2026-11-08、たけしさんが決定
+  renderFinalVideo(premadePath, musicPath, generatedVideoPath, { dishName: dishName || path.parse(photo).name, workDir, style: 'hand' });
   console.log('文字入れとBGMの合成をしました: ' + generatedVideoPath);
   // 表紙のコマをAIに選ばせる。同じコマをLINEの動画メッセージの表紙にも使う(LINEの表紙画像は1MBまでのため縮小済み)
   const cover = await pickCoverFrame(generatedVideoPath, workDir, { apiKey: ANTHROPIC_API_KEY, dishName });

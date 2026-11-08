@@ -126,6 +126,14 @@ const fadeIn = (start, dur = 0.7) => `alpha='if(lt(t,${start}),0,min(1,(t-${star
 // 出るときに、rise ピクセル下から定位置まで上がる
 const riseY = (y, start, rise = 16, dur = 0.8) => `y='${y}+${rise}*(1-min(1,max(0,(t-${start})/${dur})))'`;
 
+// 白いお皿など明るい背景でも読めるように、文字の後ろに「にじみ」を敷いてから文字を描く(2026-11-08、たけしさんの希望)。
+// にじみ: 太い薄墨のふち(外側)→少し細い濃いめのふち、の2枚を重ね、ぼかしたように見せる。その上に文字と小さな影。
+function pushWithHalo(parts, base, color, halo) {
+  parts.push(`drawtext=${base}:fontcolor=black@0.18:borderw=${halo * 2}:bordercolor=black@0.18`);
+  parts.push(`drawtext=${base}:fontcolor=black@0.3:borderw=${halo}:bordercolor=black@0.3`);
+  parts.push(`drawtext=${base}:fontcolor=${color}:shadowcolor=black@0.6:shadowx=2:shadowy=2`);
+}
+
 // 帯の上下の端をぼかす(何本かの薄い帯を重ねて、グラデーションのように見せる)
 function softBand(top, height, alpha) {
   const parts = [`drawbox=x=0:y=${top}:w=iw:h=${height}:color=black@${alpha}:t=fill`];
@@ -166,14 +174,14 @@ function buildStyledOverlay(style, dishName, { width, height }, workDir) {
     const subTop = ruleY + Math.round(width * 0.03);
     const bandTop = top - Math.round(width * 0.04);
     parts.push(...softBand(bandTop, subTop + subSize + Math.round(width * 0.04) - bandTop, style === 'mincho' ? 0.34 : 0.3));
-    parts.push(`drawtext=fontfile='${styleFont(f.accent)}':textfile='${write('accent', accentText)}':fontsize=${accentSize}:fontcolor=${accentColor}:shadowcolor=black@0.5:shadowx=1:shadowy=1:x=(w-text_w)/2:y=${top}:${fadeIn(0.2)}`);
+    pushWithHalo(parts, `fontfile='${styleFont(f.accent)}':textfile='${write('accent', accentText)}':fontsize=${accentSize}:x=(w-text_w)/2:y=${top}:${fadeIn(0.2)}`, accentColor, Math.max(2, Math.round(accentSize * 0.08)));
     lines.forEach((line, i) => {
       const y = titleTop + i * (titleSize + lineGap);
-      parts.push(`drawtext=fontfile='${styleFont(f.title)}':textfile='${write('title' + i, line)}':fontsize=${titleSize}:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2:x=(w-text_w)/2:${riseY(y, 0.45 + i * 0.12)}:${fadeIn(0.45 + i * 0.12, 0.8)}`);
+      pushWithHalo(parts, `fontfile='${styleFont(f.title)}':textfile='${write('title' + i, line)}':fontsize=${titleSize}:x=(w-text_w)/2:${riseY(y, 0.45 + i * 0.12)}:${fadeIn(0.45 + i * 0.12, 0.8)}`, 'white', Math.max(3, Math.round(titleSize * 0.08)));
     });
     const ruleW = Math.round(width * 0.16);
     parts.push(`drawbox=x=(iw-${ruleW})/2:y=${ruleY}:w=${ruleW}:h=2:color=${accentColor}@0.9:t=fill:enable='gte(t,0.9)'`);
-    parts.push(`drawtext=fontfile='${styleFont(f.sub)}':textfile='${write('sub', ACCESS_TEXT)}':fontsize=${subSize}:fontcolor=white@0.95:shadowcolor=black@0.6:shadowx=1:shadowy=1:x=(w-text_w)/2:y=${subTop}:${fadeIn(1.0)}`);
+    pushWithHalo(parts, `fontfile='${styleFont(f.sub)}':textfile='${write('sub', ACCESS_TEXT)}':fontsize=${subSize}:x=(w-text_w)/2:y=${subTop}:${fadeIn(1.0)}`, 'white', Math.max(2, Math.round(subSize * 0.12)));
   } else {
     // label: 白い札に料理名(こげ茶)、その下に赤い小さな札で「富士駅から徒歩10分」。左から滑り込む。
     const pad = Math.round(titleSize * 0.28);
