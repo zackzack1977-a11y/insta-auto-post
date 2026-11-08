@@ -52,7 +52,6 @@ async function main() {
 
   // キャプションで @food_bar_zack と書かれた投稿は、Webhookでしか一覧を取れないので、ここでは見ない。
 }
-}
 
 main().catch((e) => {
   console.error(e.message);
