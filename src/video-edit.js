@@ -228,8 +228,10 @@ function renderFinalVideo(inputVideoPath, musicPath, outputPath, { dishName, wor
   const keepOriginal = vol !== null && vol > KEEP_ORIGINAL_AUDIO_DB;
   console.log(`元の音声: ${vol === null ? 'なし' : vol + 'dB'} → ${keepOriginal ? '元の音声を残してBGMを小さく重ねる' : 'BGMだけにする'}`);
   const achain = keepOriginal
-    ? `[1:a]volume=${BGM_UNDER_VOICE}[bgm];[0:a][bgm]amix=inputs=2:duration=first:normalize=0,afade=t=out:st=${fadeStart}:d=1[a]`
-    : `[1:a]afade=t=out:st=${fadeStart}:d=1[a]`;
+    ? `[1:a]atrim=0:${info.duration},volume=${BGM_UNDER_VOICE}[bgm];[0:a][bgm]amix=inputs=2:duration=first:normalize=0,afade=t=out:st=${fadeStart}:d=1[a]`
+    : `[1:a]atrim=0:${info.duration},afade=t=out:st=${fadeStart}:d=1[a]`;
+  // くり返し流すBGMは、動画の長さで必ず切る。-shortestだけだと、フィルタを通した音声では止まらないことがあり、
+  // 2026-11-08、GitHubの上で出力が無限に伸びて容量があふれた。念のため -t でも長さを決める。
 
   execFileSync('ffmpeg', [
     '-y', '-v', 'error',
@@ -253,6 +255,7 @@ function renderFinalVideo(inputVideoPath, musicPath, outputPath, { dishName, wor
     '-movflags', '+faststart',
     '-c:a', 'aac',
     '-ar', '48000',
+    '-t', String(info.duration),
     '-shortest',
     outputPath,
   ], { stdio: 'inherit' });
