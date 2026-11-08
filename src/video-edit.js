@@ -26,23 +26,37 @@ function filterPath(p) {
   return p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
 }
 
-// 料理名を1〜2行に分ける。9文字以下は1行。長い名前は真ん中に近い「の」「と」「・」の後ろで切る。
+// 料理名を1〜2行に分ける。9文字以下は1行。
+// 「|」が入っていれば、そこで切る(手で切れ目を指定したいとき用)。
+// それ以外は、真ん中に近い言葉の切れ目で切る。切れ目は「の」「と」「・」の後ろと、よく出る料理の言葉の前。
+const BREAK_BEFORE_WORDS = ['バルサミコ', 'ソース', 'クリーム', 'サラダ', 'パスタ', 'スパ', 'アヒージョ', 'チーズ', 'マスタード',
+  'トマト', 'ガーリック', 'ステーキ', 'グリル', 'ソテー', 'カルパッチョ', 'リゾット', 'ピザ', 'フライ', 'ロースト', '刺身', '焼き', '煮込み', '赤身'];
+
 function splitTitle(name) {
+  if (name.includes('|')) return name.split('|').slice(0, 2).map((s) => s.trim());
   const chars = [...name];
   if (chars.length <= 9) return [name];
+  const cuts = new Set();
+  chars.forEach((c, i) => { if ('のと・&'.includes(c)) cuts.add(i + 1); });
+  BREAK_BEFORE_WORDS.forEach((w) => {
+    let at = name.indexOf(w, 1);
+    while (at > 0) {
+      cuts.add([...name.slice(0, at)].length);
+      at = name.indexOf(w, at + 1);
+    }
+  });
   const mid = chars.length / 2;
   let best = -1;
   let bestDist = Infinity;
-  chars.forEach((c, i) => {
-    if ('のと・&'.includes(c) && i > 1 && i < chars.length - 2) {
-      const dist = Math.abs(i + 1 - mid);
-      if (dist < bestDist) {
-        best = i + 1;
-        bestDist = dist;
-      }
+  cuts.forEach((k) => {
+    if (k < 2 || k > chars.length - 2) return;
+    const dist = Math.abs(k - mid);
+    if (dist < bestDist) {
+      best = k;
+      bestDist = dist;
     }
   });
-  if (best < 0 || bestDist > chars.length / 4) best = Math.ceil(mid);
+  if (best < 0 || bestDist > chars.length / 3) best = Math.ceil(mid);
   return [chars.slice(0, best).join(''), chars.slice(best).join('')];
 }
 
@@ -92,25 +106,131 @@ function buildOverlayFilter(dishName, { width, height }, workDir) {
   return parts.join(',');
 }
 
+// ---- デザイン案(2026-11-08、試作中)。フォントはどれもSIL Open Font License(商用可・同梱可)。----
+// フォントの置き場は OVERLAY_FONT_DIR(なければリポジトリの fonts/)。
+const STYLE_FONTS = {
+  mincho: { title: 'ZenOldMincho-Bold.ttf', sub: 'ZenOldMincho-Bold.ttf', accent: 'PlayfairDisplay-Italic.ttf' },
+  hand: { title: 'KleeOne-SemiBold.ttf', sub: 'KleeOne-SemiBold.ttf', accent: 'GreatVibes-Regular.ttf' },
+  label: { title: 'ZenMaruGothic-Bold.ttf', sub: 'ZenMaruGothic-Bold.ttf' },
+};
+
+function styleFont(file) {
+  const dir = process.env.OVERLAY_FONT_DIR || path.join(__dirname, '..', 'fonts');
+  const p = path.join(dir, file);
+  if (!fs.existsSync(p)) throw new Error('デザイン用のフォントが見つかりません: ' + p);
+  return filterPath(p);
+}
+
+// start秒から dur秒かけて、ふわっと出る(透明→不透明)
+const fadeIn = (start, dur = 0.7) => `alpha='if(lt(t,${start}),0,min(1,(t-${start})/${dur}))'`;
+// 出るときに、rise ピクセル下から定位置まで上がる
+const riseY = (y, start, rise = 16, dur = 0.8) => `y='${y}+${rise}*(1-min(1,max(0,(t-${start})/${dur})))'`;
+
+// 帯の上下の端をぼかす(何本かの薄い帯を重ねて、グラデーションのように見せる)
+function softBand(top, height, alpha) {
+  const parts = [`drawbox=x=0:y=${top}:w=iw:h=${height}:color=black@${alpha}:t=fill`];
+  const steps = 20;
+  const s = 3;
+  for (let i = 0; i < steps; i += 1) {
+    const a = (alpha * (1 - (i + 1) / (steps + 1))).toFixed(3);
+    parts.push(`drawbox=x=0:y=${top - s * (i + 1)}:w=iw:h=${s}:color=black@${a}:t=fill`);
+    parts.push(`drawbox=x=0:y=${top + height + s * i}:w=iw:h=${s}:color=black@${a}:t=fill`);
+  }
+  return parts;
+}
+
+function buildStyledOverlay(style, dishName, { width, height }, workDir) {
+  const f = STYLE_FONTS[style];
+  if (!f) throw new Error('知らないデザイン名: ' + style);
+  fs.mkdirSync(workDir, { recursive: true });
+  const write = (name, text) => {
+    const p = path.join(workDir, `overlay_${name}.txt`);
+    fs.writeFileSync(p, text, 'utf8');
+    return filterPath(p);
+  };
+  const lines = splitTitle(dishName);
+  const maxLen = Math.max(...lines.map((l) => [...l].length));
+  const titleSize = Math.round(Math.min(width * 0.115, (width * 0.84) / maxLen));
+  const lineGap = Math.round(titleSize * 0.22);
+  const top = Math.round(height * 0.17);
+  const parts = [];
+
+  if (style === 'mincho' || style === 'hand') {
+    const accentText = style === 'mincho' ? 'Food & Bar Zack' : "Today's Special";
+    const accentSize = Math.round(width * (style === 'mincho' ? 0.056 : 0.09));
+    const accentColor = style === 'mincho' ? '0xE8D9B5' : '0xF3D9A4';
+    const titleTop = top + Math.round(accentSize * 1.35);
+    const titleBottom = titleTop + lines.length * titleSize + (lines.length - 1) * lineGap;
+    const ruleY = titleBottom + Math.round(width * 0.03);
+    const subSize = Math.round(width * 0.042);
+    const subTop = ruleY + Math.round(width * 0.03);
+    const bandTop = top - Math.round(width * 0.04);
+    parts.push(...softBand(bandTop, subTop + subSize + Math.round(width * 0.04) - bandTop, style === 'mincho' ? 0.34 : 0.3));
+    parts.push(`drawtext=fontfile='${styleFont(f.accent)}':textfile='${write('accent', accentText)}':fontsize=${accentSize}:fontcolor=${accentColor}:shadowcolor=black@0.5:shadowx=1:shadowy=1:x=(w-text_w)/2:y=${top}:${fadeIn(0.2)}`);
+    lines.forEach((line, i) => {
+      const y = titleTop + i * (titleSize + lineGap);
+      parts.push(`drawtext=fontfile='${styleFont(f.title)}':textfile='${write('title' + i, line)}':fontsize=${titleSize}:fontcolor=white:shadowcolor=black@0.6:shadowx=2:shadowy=2:x=(w-text_w)/2:${riseY(y, 0.45 + i * 0.12)}:${fadeIn(0.45 + i * 0.12, 0.8)}`);
+    });
+    const ruleW = Math.round(width * 0.16);
+    parts.push(`drawbox=x=(iw-${ruleW})/2:y=${ruleY}:w=${ruleW}:h=2:color=${accentColor}@0.9:t=fill:enable='gte(t,0.9)'`);
+    parts.push(`drawtext=fontfile='${styleFont(f.sub)}':textfile='${write('sub', ACCESS_TEXT)}':fontsize=${subSize}:fontcolor=white@0.95:shadowcolor=black@0.6:shadowx=1:shadowy=1:x=(w-text_w)/2:y=${subTop}:${fadeIn(1.0)}`);
+  } else {
+    // label: 白い札に料理名(こげ茶)、その下に赤い小さな札で「富士駅から徒歩10分」。左から滑り込む。
+    const pad = Math.round(titleSize * 0.28);
+    const subSize = Math.round(width * 0.04);
+    lines.forEach((line, i) => {
+      const y = top + i * (titleSize + pad * 2 + 6);
+      const start = 0.3 + i * 0.15;
+      parts.push(`drawtext=fontfile='${styleFont(f.title)}':textfile='${write('title' + i, line)}':fontsize=${titleSize}:fontcolor=0x3B2A20:box=1:boxcolor=white@0.92:boxborderw=${pad}:x='(w-text_w)/2-50*(1-min(1,max(0,(t-${start})/0.5)))':y=${y}:${fadeIn(start, 0.5)}`);
+    });
+    const subTop = top + lines.length * (titleSize + pad * 2 + 6) + Math.round(subSize * 0.5);
+    parts.push(`drawtext=fontfile='${styleFont(f.sub)}':textfile='${write('sub', ACCESS_TEXT)}':fontsize=${subSize}:fontcolor=white:box=1:boxcolor=0xB03A2E@0.92:boxborderw=${Math.round(subSize * 0.35)}:x=(w-text_w)/2:y=${subTop}:${fadeIn(0.9, 0.5)}`);
+  }
+  return parts.join(',');
+}
+
 // 文字入れ・BGM合成・映像の作り直しを、1回のエンコードでまとめて行う。
 // 映像の作り直し: 2026-10-16、Gensparkの出力の作りが変わり(作成ソフトの表記が「ISO Media file produced
 // by Google」、色の情報にsRGB用の値)、そのままコピーして投稿したらInstagram側で下半分がノイズに崩れた。
 // Instagramの推奨どおりの、ごく普通のH.264(BT.709、1秒ごとの区切りのコマ、先頭にファイル情報)にそろえる。
 // BGM: 音声は差し替え。BGMの方が短いときのために無限ループさせ、映像の長さ(-shortest)で切る。
-function renderFinalVideo(inputVideoPath, musicPath, outputPath, { dishName, workDir } = {}) {
+// 元の動画の音声の大きさ(平均、dB)。音声が無ければnull。
+// Gensparkの動画は、音なしで頼んでも、ほぼ無音(平均-40〜-72dB)の音声が付いてくる。
+// Flow(Veo)の動画は、セリフや料理の音が入っている(平均-15〜-20dB)。2026-11-08に測った値。
+function meanVolumeDb(videoPath) {
+  const hasAudio = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', videoPath]).toString().trim();
+  if (!hasAudio) return null;
+  const r = require('child_process').spawnSync('ffmpeg', ['-v', 'info', '-i', videoPath, '-vn', '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' });
+  const m = (r.stderr || '').match(/mean_volume:\s*(-?[\d.]+) dB/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+// これより大きい音が入っている動画は、元の音声を残して、BGMを小さく重ねる。
+const KEEP_ORIGINAL_AUDIO_DB = -35;
+const BGM_UNDER_VOICE = 0.18; // 元の音声に重ねるときのBGMの大きさ(約-15dB)
+
+function renderFinalVideo(inputVideoPath, musicPath, outputPath, { dishName, workDir, style = 'basic' } = {}) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   const info = probe(inputVideoPath);
   const fadeStart = Math.max(info.duration - 1, 0);
-  const vf = dishName ? ['-vf', buildOverlayFilter(dishName, info, workDir || path.dirname(outputPath))] : [];
+  const wd = workDir || path.dirname(outputPath);
+  let vchain = 'null';
+  if (dishName) vchain = style === 'basic' ? buildOverlayFilter(dishName, info, wd) : buildStyledOverlay(style, dishName, info, wd);
+  const vol = meanVolumeDb(inputVideoPath);
+  const keepOriginal = vol !== null && vol > KEEP_ORIGINAL_AUDIO_DB;
+  console.log(`元の音声: ${vol === null ? 'なし' : vol + 'dB'} → ${keepOriginal ? '元の音声を残してBGMを小さく重ねる' : 'BGMだけにする'}`);
+  const achain = keepOriginal
+    ? `[1:a]volume=${BGM_UNDER_VOICE}[bgm];[0:a][bgm]amix=inputs=2:duration=first:normalize=0,afade=t=out:st=${fadeStart}:d=1[a]`
+    : `[1:a]afade=t=out:st=${fadeStart}:d=1[a]`;
 
   execFileSync('ffmpeg', [
     '-y', '-v', 'error',
     '-i', inputVideoPath,
     '-stream_loop', '-1',
     '-i', musicPath,
-    '-map', '0:v:0',
-    '-map', '1:a:0',
-    ...vf,
+    '-filter_complex', `[0:v]${vchain}[v];${achain}`,
+    '-map', '[v]',
+    '-map', '[a]',
     '-c:v', 'libx264',
     '-colorspace', 'bt709',
     '-color_primaries', 'bt709',
@@ -125,7 +245,6 @@ function renderFinalVideo(inputVideoPath, musicPath, outputPath, { dishName, wor
     '-movflags', '+faststart',
     '-c:a', 'aac',
     '-ar', '48000',
-    '-af', `afade=t=out:st=${fadeStart}:d=1`,
     '-shortest',
     outputPath,
   ], { stdio: 'inherit' });

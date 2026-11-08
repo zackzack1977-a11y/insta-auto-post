@@ -23,10 +23,11 @@ async function main() {
     console.error('使い方: node src/preview-video.js "videos/料理名.mp4"');
     process.exit(1);
   }
-  const dishName = dishNameFromFilename(path.basename(input));
+  const dishName = process.argv[3] || dishNameFromFilename(path.basename(input));
   const outDir = path.join(ROOT, 'generated', 'preview');
-  const out = path.join(outDir, `${path.parse(input).name}_final.mp4`);
-  renderFinalVideo(input, pickRandomMusic(), out, { dishName, workDir: outDir });
+  const style = process.env.OVERLAY_STYLE || 'basic';
+  const out = path.join(outDir, `${path.parse(input).name}_${style}.mp4`);
+  renderFinalVideo(input, pickRandomMusic(), out, { dishName, workDir: path.join(outDir, 'work'), style });
   console.log('仕上がりの動画: ' + out);
   const cover = await pickCoverFrame(out, path.join(outDir, 'cover'), { apiKey: process.env.ANTHROPIC_API_KEY, dishName });
   console.log('表紙(thumb_offset): ' + cover.offsetMs + 'ミリ秒 / ' + cover.framePath);
