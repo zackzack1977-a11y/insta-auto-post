@@ -1,0 +1,65 @@
+name: 新しい機能の確認(投稿はしない)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'render=文字入れの見本を作る / container=AIラベルと表紙の受け付け確認(下書きのみ) / collab=共同投稿の招待の状態を見る'
+        required: true
+        default: 'render'
+      video:
+        description: 'renderで使う動画(videos/の中のファイル名)'
+        required: false
+        default: '大根サラダ.mp4'
+      video_url:
+        description: 'containerで使う、公開されている動画のURL'
+        required: false
+        default: ''
+
+# 本番の投稿(post.yml)とgitの書き込みがぶつからないよう、同じ順番待ちの列に入れる。
+# このワークフロー自体はリポジトリに何も書き込まない。
+concurrency:
+  group: insta-auto-post
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: ffmpegと日本語フォントをインストール
+        if: github.event.inputs.mode == 'render'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
+
+      - name: 文字入れの見本を作る
+        if: github.event.inputs.mode == 'render'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node src/preview-video.js "videos/${{ github.event.inputs.video }}"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event.inputs.mode == 'render'
+        with:
+          name: preview
+          path: generated/preview/
+          retention-days: 3
+
+      - name: AIラベルと表紙の受け付け確認(下書きのみ、公開しない)
+        if: github.event.inputs.mode == 'container'
+        env:
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          VIDEO_URL: ${{ github.event.inputs.video_url }}
+        run: node src/test-container.js
+
+      - name: 共同投稿の招待の状態を見る
+        if: github.event.inputs.mode == 'collab'
+        env:
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+        run: node src/collab-check.js

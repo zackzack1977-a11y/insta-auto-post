@@ -10,8 +10,9 @@ const {
   findPremadeVideoPath,
   pickNextPhoto,
 } = require('./shared');
+const { renderFinalVideo, pickCoverFrame } = require('./video-edit');
+const { dishNameFromFilename, pickRandomMusic } = require('./post-helpers');
 
-const MUSIC_DIR = path.join(ROOT, 'music');
 const GENERATED_DIR = path.join(ROOT, 'generated');
 // Food & Bar ZackのFacebookページID。位置情報タグにはそのままこのIDを使う
 // (location_idの実体は「その場所に紐づいたFacebookページのID」)。
@@ -103,26 +104,6 @@ async function fetchWithRetry(url, options = {}, { retries = 2, baseDelayMs = 15
   throw lastErr;
 }
 
-function dishNameFromFilename(filename) {
-  let name = path.parse(filename).name;
-  name = name.replace(/\s*-\s*コピー(\s*\(\d+\))?\s*$/i, '');
-  name = name.replace(/\s*\(\d+\)\s*$/, '');
-  name = name.replace(/\s*[_-]\s*\d+\s*$/, '');
-  return name.trim();
-}
-
-const MUSIC_EXTENSIONS = new Set(['.mp3', '.mp4', '.m4a', '.wav']);
-
-function pickRandomMusic() {
-  const files = fs.existsSync(MUSIC_DIR)
-    ? fs.readdirSync(MUSIC_DIR).filter((f) => MUSIC_EXTENSIONS.has(path.extname(f).toLowerCase()))
-    : [];
-  if (files.length === 0) {
-    throw new Error('musicフォルダに著作権フリーの音楽ファイル(mp3/mp4/m4a/wav)を入れてください。');
-  }
-  return path.join(MUSIC_DIR, files[Math.floor(Math.random() * files.length)]);
-}
-
 async function generateCaptionAndOverlay(imagePath, dishNote) {
   const imageData = fs.readFileSync(imagePath).toString('base64');
   const ext = path.extname(imagePath).toLowerCase();
@@ -202,63 +183,6 @@ CAPTION:
   };
 }
 
-function getVideoDurationSeconds(videoPath) {
-  const out = execFileSync('ffprobe', [
-    '-v', 'error',
-    '-show_entries', 'format=duration',
-    '-of', 'default=noprint_wrappers=1:nokey=1',
-    videoPath,
-  ]).toString().trim();
-  const duration = parseFloat(out);
-  if (!Number.isFinite(duration) || duration <= 0) {
-    throw new Error(`動画の長さを取得できませんでした(ffprobeの出力: "${out}")。動画ファイルが壊れている可能性があります: ${videoPath}`);
-  }
-  return duration;
-}
-
-// Genspark等で生成した動画は音楽を付けずに(無音で)作ってもらう運用にしているため、
-// ここでmusicフォルダからランダムに選んだ音源を合成する。音声トラックは差し替え(元動画に音声があっても無視して上書きする)、
-// 映像はInstagramで崩れないよう再エンコードする(下のコメント参照)。
-// BGMの方が動画より短いケースがあるため、音声を無限ループさせたうえで
-// -shortest(=映像の長さ)で切る。これにより「BGMが短いせいで動画自体が
-// 切り詰められる」事故を防ぐ(逆に音声が長い場合は従来通り-shortestで映像長に合わせる)。
-function addMusicToVideo(inputVideoPath, musicPath, outputPath) {
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  const duration = getVideoDurationSeconds(inputVideoPath);
-  const fadeStart = Math.max(duration - 1, 0);
-
-  execFileSync('ffmpeg', [
-    '-y',
-    '-i', inputVideoPath,
-    '-stream_loop', '-1',
-    '-i', musicPath,
-    '-map', '0:v:0',
-    '-map', '1:a:0',
-    // 映像も作り直す(再エンコード)。2026-10-16、Gensparkの出力の作りが変わり(作成ソフトの表記が
-    // 「ISO Media file produced by Google」、色の情報にsRGB用の値が入る)、それをそのままコピーして
-    // 投稿したら、Instagram側で作り直されたときに画面の下半分がピンクや緑のノイズに崩れた。
-    // 9月までのGenspark動画(そのままコピーで問題なし)とは、この作りと色の情報だけが違っていた。
-    // Instagramの推奨どおりの、ごく普通のH.264(色はBT.709、1秒ごとに区切りのコマ、先頭にファイル情報)にそろえる
-    '-c:v', 'libx264',
-    '-colorspace', 'bt709',
-    '-color_primaries', 'bt709',
-    '-color_trc', 'bt709',
-    '-color_range', 'tv',
-    '-preset', 'medium',
-    '-crf', '18',
-    '-pix_fmt', 'yuv420p',
-    '-profile:v', 'high',
-    '-level', '4.0',
-    '-g', '24',
-    '-movflags', '+faststart',
-    '-c:a', 'aac',
-    '-ar', '48000',
-    '-af', `afade=t=out:st=${fadeStart}:d=1`,
-    '-shortest',
-    outputPath,
-  ], { stdio: 'inherit' });
-}
-
 async function waitUntilMediaReady(creationId, attempts = 60, intervalMs = 10000) {
   for (let i = 0; i < attempts; i += 1) {
     const res = await fetchWithRetry(
@@ -283,25 +207,35 @@ async function waitUntilMediaReady(creationId, attempts = 60, intervalMs = 10000
   throw new Error('メディアの準備がタイムアウトしました(10分経過)');
 }
 
-async function createMediaContainer(videoUrl, caption) {
+// is_ai_generated: AIで作った動画であることのラベル(2026-06-22から。Facebookログイン版・Instagramログイン版の両方)。
+// thumb_offset: 表紙にするコマの位置(ミリ秒)。pickCoverFrameでAIが選んだコマを使う。
+// この2つは新しく足した項目なので、万一Instagramに受け付けられなかったときは、外してもう一度だけ作る
+// (投稿そのものを止めないため)。
+async function createMediaContainer(videoUrl, caption, { thumbOffsetMs } = {}) {
   const base = `https://graph.facebook.com/v21.0/${INSTAGRAM_BUSINESS_ACCOUNT_ID}`;
+  const core = {
+    media_type: 'REELS',
+    video_url: videoUrl,
+    caption,
+    location_id: STORE_LOCATION_ID,
+    access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
+  };
+  const extras = { is_ai_generated: true };
+  if (Number.isFinite(thumbOffsetMs)) extras.thumb_offset = thumbOffsetMs;
 
-  const createRes = await fetchWithRetry(
+  const post = (body) => fetchWithRetry(
     `${base}/media`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        media_type: 'REELS',
-        video_url: videoUrl,
-        caption,
-        location_id: STORE_LOCATION_ID,
-        access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
-      }),
-    },
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
     { retries: 1, label: 'Instagramメディア作成' } // POSTの再試行はコンテナ二重生成のリスクがあるため回数を絞る
   );
-  const createJson = await createRes.json();
+
+  let createRes = await post({ ...core, ...extras });
+  let createJson = await createRes.json();
+  if (!createRes.ok && createRes.status === 400) {
+    console.warn('AIラベル・表紙の指定つきで作れなかったため、外してもう一度作ります: ' + JSON.stringify(createJson));
+    createRes = await post(core);
+    createJson = await createRes.json();
+  }
   if (!createRes.ok) {
     throw new Error(`Instagramメディア作成エラー: ${JSON.stringify(createJson)}`);
   }
@@ -569,12 +503,15 @@ async function main() {
     return;
   }
 
-  addMusicToVideo(premadePath, musicPath, generatedVideoPath);
-  console.log('Genspark動画にBGMを合成しました: ' + generatedVideoPath);
-  // LINEの動画メッセージ用の小さな表紙画像(1秒目のコマ)。LINEの表紙画像は1MBまでのため縮小する
+  // 料理名(大きく)と「富士駅から徒歩10分」(小さく)を動画に入れ、BGMを合成する(2026-11-08、文字入れを追加)。
+  const workDir = path.join(GENERATED_DIR, 'work');
+  renderFinalVideo(premadePath, musicPath, generatedVideoPath, { dishName: dishName || path.parse(photo).name, workDir });
+  console.log('文字入れとBGMの合成をしました: ' + generatedVideoPath);
+  // 表紙のコマをAIに選ばせる。同じコマをLINEの動画メッセージの表紙にも使う(LINEの表紙画像は1MBまでのため縮小済み)
+  const cover = await pickCoverFrame(generatedVideoPath, workDir, { apiKey: ANTHROPIC_API_KEY, dishName });
   const previewName = path.parse(photo).name + '_preview.jpg';
   const previewPath = path.join(GENERATED_DIR, previewName);
-  execFileSync('ffmpeg', ['-y', '-v', 'error', '-ss', '1', '-i', generatedVideoPath, '-frames:v', '1', '-vf', 'scale=360:-1', previewPath]);
+  fs.copyFileSync(cover.framePath, previewPath);
   git(['add', path.relative(ROOT, generatedVideoPath), path.relative(ROOT, previewPath)]);
   git(['commit', '-m', `動画にBGMを合成: ${videoName}`]);
   pushWithRebase(branch);
@@ -594,7 +531,7 @@ async function main() {
   const lineVideoUrl = permanentBase + encodeURIComponent(videoName);
   const linePreviewUrl = permanentBase + encodeURIComponent(previewName);
 
-  const creationId = await createMediaContainer(videoUrl, caption);
+  const creationId = await createMediaContainer(videoUrl, caption, { thumbOffsetMs: cover.offsetMs });
   console.log('Instagram側で公開準備が完了しました(まだ非公開): ' + creationId);
 
   // 動画はInstagram側に取り込まれた後は不要なので削除する。
