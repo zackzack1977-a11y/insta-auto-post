@@ -40,6 +40,18 @@ async function main() {
     console.log(`承認済みの共同投稿: ${collab.items.length}件`);
     collab.items.forEach((x, i) => console.log(`  ${i + 1}. ${x.timestamp || ''} 相手 ${mask(x.username)} ${x.media_type || ''}`));
   }
+
+  // 他の人の投稿で、お店がタグ付けされたもの(写真の中のタグ)。共同投稿ではなくタグだけで済まされているかを見る。
+  const tags = await getAll(`${BASE}/${INSTAGRAM_BUSINESS_ACCOUNT_ID}/tags?fields=id,timestamp,username,media_type&limit=50&${token}`, 200);
+  if (tags.error) {
+    console.log('タグ付けされた投稿: 取れませんでした ' + JSON.stringify(tags.error));
+  } else {
+    console.log(`タグ付けされた投稿: ${tags.items.length}件`);
+    tags.items.forEach((x, i) => console.log(`  ${i + 1}. ${x.timestamp || ''} 相手 ${mask(x.username)} ${x.media_type || ''}`));
+  }
+
+  // キャプションで @food_bar_zack と書かれた投稿は、Webhookでしか一覧を取れないので、ここでは見ない。
+}
 }
 
 main().catch((e) => {
