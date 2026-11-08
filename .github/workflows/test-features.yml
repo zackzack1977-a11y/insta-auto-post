@@ -16,11 +16,8 @@ on:
         required: false
         default: ''
 
-# 本番の投稿(post.yml)とgitの書き込みがぶつからないよう、同じ順番待ちの列に入れる。
-# このワークフロー自体はリポジトリに何も書き込まない。
-concurrency:
-  group: insta-auto-post
-  cancel-in-progress: false
+# このワークフローはリポジトリに何も書き込まないので、本番の投稿(post.yml)の順番待ちの列には入れない。
+# (同じ列に入れると、待っている実行は1つしか持てないため、本番の投稿の順番待ちを取り消してしまう恐れがある)
 
 jobs:
   test:
