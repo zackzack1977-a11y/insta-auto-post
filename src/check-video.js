@@ -63,7 +63,8 @@ const { width, height } = info.streams[0];
 const duration = Number(info.format.duration);
 
 if (Math.abs(width / height - 9 / 16) > 0.02) problems.push(`縦9:16ではない(${width}x${height})`);
-if (duration < 8 || duration > 12) problems.push(`長さが10秒前後ではない(${duration.toFixed(1)}秒)`);
+// 2026-11-10、Gemini APIの作り置き(12秒、最長15秒)に合わせて、上限を12秒から15.5秒に広げた
+if (duration < 8 || duration > 15.5) problems.push(`長さが8〜15秒ではない(${duration.toFixed(1)}秒)`);
 
 // showinfoの結果はstderrに出る
 const sceneOutput = spawnSync(ffmpeg, ['-hide_banner', '-i', videoPath, '-vf', `select='gt(scene,${SCENE_THRESHOLD})',showinfo`, '-f', 'null', '-']).stderr.toString();
