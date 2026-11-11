@@ -42,8 +42,15 @@ jobs:
         with:
           node-version: '20'
 
+      # 2026-11-11、apt-get が45分止まったまま終わったことがあるので、1回5分で区切って3回まで試す
       - name: ffmpegと日本語フォントをインストール
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
+        timeout-minutes: 20
+        run: |
+          for i in 1 2 3; do
+            if timeout 300 sudo apt-get update && timeout 300 sudo apt-get install -y ffmpeg fonts-noto-cjk; then exit 0; fi
+            echo "インストールに失敗(${i}回目)。やり直す"; sleep 10
+          done
+          exit 1
 
       - name: 動画を作る
         env:
