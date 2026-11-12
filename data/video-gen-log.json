@@ -1,0 +1,17 @@
+[
+  {
+    "at": "2026-11-12T01:36:31.243Z",
+    "photo": "10種の野菜の野菜スティック.jpg",
+    "model": "gemini-omni-1.2-flash",
+    "seconds": 12,
+    "usd": 0.84,
+    "result": "error",
+    "reason": "できた動画の確認中のエラー: Claudeの答えにJSONがありません: ",
+    "portrait": true,
+    "composition": "close",
+    "camera": "macro glide across carrots and ice, slow pull-back to original framing, gentle push-in",
+    "action": "none",
+    "prompt": "Vertical 9:16, 12 seconds, one continuous take with no cuts, photorealistic cinematic food commercial of \"Vegetable Sticks with 10 Kinds of Vegetables\" on a long white rectangular plate on a scratched, glossy wooden bar table (orange carrot sticks, green cucumber stick, broccoli florets, red bell pepper strip, yellow bell pepper strip, a halved green vegetable with seeds, a small red cherry tomato, celery leaves, green lettuce, white sliced vegetable, crushed ice, a creamy white dip in a small glass bowl). Camera choreography: 0-3s extreme macro close-up gliding across the carrot sticks and glistening crushed ice; 3-7s the camera slowly pulls back only as far as the original photo framing, revealing the colorful vegetables and the glass bowl of dip; 7-12s a gentle push-in toward the vegetables and dip. Smooth gimbal movement, shallow depth of field, warm moody bar lighting, appetizing highlights. Keep every item the same as in the photo, do not add ingredients, do not deform the food. No people or faces. Natural soft restaurant ambience only, no speech, no music. No text, no logos, no watermark.",
+    "interactionId": "v1_ChdUUmoxYXY2VUl0eWo1Tm9QeEpEWjZBSRIXVFJqMWF2NlVJdHlqNU5vUHhKRFo2QUk"
+  }
+]
