@@ -149,7 +149,10 @@ function countReady() {
 }
 
 // ---------- Claude ----------
-async function askClaude(content, maxTokens = 1200) {
+// 2026-11-12: Sonnet 5.5は、何も指定しなくても考える時間(thinking)を使い、その分もmax_tokensに数える。
+// 確認の呼び出しをmax_tokens 300にしていたら、考えるだけで使い切って答えが空になり、
+// できた動画(約0.84ドル)が「確認中のエラー」で捨てられた。なので上限は大きめにし、空なら理由を出す。
+async function askClaude(content, maxTokens = 8000) {
   for (const model of [PROMPT_MODEL, FALLBACK_MODEL]) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -157,7 +160,13 @@ async function askClaude(content, maxTokens = 1200) {
       body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
     });
     const json = await res.json();
-    if (res.ok) return json.content.filter((c) => c.type === 'text').map((c) => c.text).join('');
+    if (res.ok) {
+      const text = (json.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+      if (text.trim()) return text;
+      console.warn(`${model} の答えが空でした(stop_reason: ${json.stop_reason}${json.stop_details ? ', ' + JSON.stringify(json.stop_details) : ''})`);
+      if (model === FALLBACK_MODEL) return '';
+      continue;
+    }
     if (model === FALLBACK_MODEL || (res.status !== 404 && res.status !== 400)) {
       throw new Error(`Anthropic APIのエラー(${model}): ${JSON.stringify(json).slice(0, 300)}`);
     }
@@ -259,7 +268,7 @@ async function visualCheck(smallPhoto, sheet, dishName) {
 ①途中で別の場面・別のお皿に切り替わる ②料理そのものが写真と別物になっている(主役の食材や盛り付けが違う) ③引き伸ばし・ゆがみ・溶けたような崩れ・ノイズ
 背景に棚や厨房が少し入る、添え物が少し増える、カメラが寄ったり回り込んだりする、程度は合格です。
 JSONだけで答えてください: {"ok": true か false, "reason": "日本語で短く"}`;
-  const answer = await askClaude([imageBlock(smallPhoto), imageBlock(sheetJpg), { type: 'text', text }], 300);
+  const answer = await askClaude([imageBlock(smallPhoto), imageBlock(sheetJpg), { type: 'text', text }]);
   const j = parseJson(answer);
   return { ok: j.ok === true, reason: String(j.reason || '') };
 }
