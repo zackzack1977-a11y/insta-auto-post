@@ -31,7 +31,8 @@ jobs:
 
       - name: ffmpegと日本語フォントをインストール
         if: github.event.inputs.mode == 'render'
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
+        timeout-minutes: 35
+        run: bash scripts/install-apt.sh ffmpeg fonts-noto-cjk
 
       - name: 文字入れの見本を作る
         if: github.event.inputs.mode == 'render'

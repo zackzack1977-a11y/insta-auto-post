@@ -27,7 +27,8 @@ jobs:
           node-version: '20'
 
       - name: ffmpegと日本語フォントをインストール
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
+        timeout-minutes: 35
+        run: bash scripts/install-apt.sh ffmpeg fonts-noto-cjk
 
       - name: 投稿を実行
         env:

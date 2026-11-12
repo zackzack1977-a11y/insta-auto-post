@@ -36,7 +36,8 @@ jobs:
 
       - name: ffmpegをインストール
         if: steps.pending.outputs.count != '0'
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        timeout-minutes: 35
+        run: bash scripts/install-apt.sh ffmpeg
 
       - name: 公開後の見え方をチェック
         if: steps.pending.outputs.count != '0'

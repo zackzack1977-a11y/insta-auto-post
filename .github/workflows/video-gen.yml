@@ -34,7 +34,7 @@ concurrency:
 jobs:
   gen:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -42,15 +42,10 @@ jobs:
         with:
           node-version: '20'
 
-      # 2026-11-11、apt-get が45分止まったまま終わったことがあるので、1回5分で区切って3回まで試す
+      # 2026-11-12、Ubuntuの配布元の障害で止まったので、区切って試し、だめなら公式の配布元に切り替える(scripts/install-apt.sh)
       - name: ffmpegと日本語フォントをインストール
-        timeout-minutes: 20
-        run: |
-          for i in 1 2 3; do
-            if timeout 300 sudo apt-get update && timeout 300 sudo apt-get install -y ffmpeg fonts-noto-cjk; then exit 0; fi
-            echo "インストールに失敗(${i}回目)。やり直す"; sleep 10
-          done
-          exit 1
+        timeout-minutes: 35
+        run: bash scripts/install-apt.sh ffmpeg fonts-noto-cjk
 
       - name: 動画を作る
         env:
