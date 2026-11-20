@@ -2,6 +2,10 @@ name = "insta-auto-post-publish"
 main = "publish-worker.js"
 compatibility_date = "2026-09-07"
 
+# 予約公開(2026-11-20): 日本時間17:00〜17:50に10分おき(UTC 8時台)。publish-worker.jsのrunScheduled
+[triggers]
+crons = ["*/10 8 * * *"]
+
 # 公開リンクの二重タップ防止・処理状態記録用(publish-worker.js参照)
 [[kv_namespaces]]
 binding = "PUBLISH_KV"

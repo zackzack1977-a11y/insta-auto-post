@@ -47,7 +47,31 @@
 
 const LINK_EXPIRY_MS = 23 * 60 * 60 * 1000; // post.js側の同名の定数と必ず一致させること
 
+// 予約公開(2026-11-20、たけしさんの決定): 「投稿する」を押しても、すぐには公開せず、
+// その日の夕方5時(日本時間)に公開する。オーパスの調査で、来店につながる時間として選んだ。
+// 5時を過ぎてから押した場合や、5時まで待つと下書き(24時間で失効)の期限に近い場合は、すぐ公開する。
+// 予約はKVの「sched:<creation_id>」に入れ、wrangler.tomlのcron(UTC 8:00〜8:50に10分おき)で公開する。
+const PUBLISH_HOUR_JST = 17;
+const SCHEDULE_SAFETY_MS = 22 * 60 * 60 * 1000; // 下書きを作ってから22時間を超える予約はしない
+
+function scheduledTimeFor(ts) {
+  const now = Date.now();
+  const jst = new Date(now + 9 * 60 * 60 * 1000);
+  const target = Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate(), PUBLISH_HOUR_JST - 9, 0, 0);
+  if (now >= target) return null; // もう5時を過ぎた → すぐ公開
+  if (target - Number(ts) > SCHEDULE_SAFETY_MS) return null; // 5時まで待つと期限が近い → すぐ公開
+  return target;
+}
+
+function schedKey(id) {
+  return `sched:${id}`;
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduled(env, event.cron));
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
 
@@ -101,11 +125,15 @@ async function handleConfirmPage(url, env) {
     if (state === 'published') {
       return html('この投稿はすでに公開済みです。');
     }
+    if (state === 'scheduled') {
+      return html('この投稿は予約済みです。今日の夕方5時に自動で公開されます。');
+    }
   }
 
+  const willSchedule = scheduledTimeFor(ts) !== null;
   // ここではまだ何も公開しない。確認ボタン付きのページを返すだけ。
   return html(
-    `<p>この内容をInstagramに投稿します。よろしいですか?</p>
+    `<p>${willSchedule ? 'この内容を、今日の夕方5時にInstagramへ予約で投稿します。よろしいですか?' : 'この内容をInstagramに投稿します(今すぐ公開されます)。よろしいですか?'}</p>
      <form method="POST" action="/publish">
        <input type="hidden" name="id" value="${escapeHtml(id)}">
        <input type="hidden" name="ts" value="${escapeHtml(ts)}">
@@ -134,9 +162,62 @@ async function handlePublish(request, env) {
     if (state === 'published') {
       return html('この投稿はすでに公開済みです(重複タップ防止)。');
     }
-    // 連打・二重送信対策の短時間ロック。結果が分かり次第、下で更新/解除する。
-    await env.PUBLISH_KV.put(key, 'processing', { expirationTtl: 300 });
+    if (state === 'scheduled') {
+      return html('この投稿は予約済みです。今日の夕方5時に自動で公開されます。');
+    }
+    if (state === 'processing') {
+      return html('いま公開の処理中です。少し待ってから、Instagramで確かめてください。');
+    }
+
+    const at = scheduledTimeFor(ts);
+    if (at !== null) {
+      await env.PUBLISH_KV.put(schedKey(id), JSON.stringify({ at }), { expirationTtl: 60 * 60 * 24 * 2 });
+      await env.PUBLISH_KV.put(key, 'scheduled', { expirationTtl: 60 * 60 * 24 * 2 });
+      return html('予約しました。今日の夕方5時に、自動でInstagramに公開されます。公開されたらLINEでお知らせが届きます。');
+    }
   }
+
+  const result = await publishNow(env, id);
+  if (result.ok) {
+    if (result.parseFailed) {
+      return html('Instagramに投稿しました(応答の詳細は取得できませんでしたが、リクエスト自体は成功しています)。');
+    }
+    return html('Instagramに投稿しました!');
+  }
+  if (result.network) {
+    return html(`通信エラーで投稿に失敗しました。もう一度お試しください。<br><small>${escapeHtml(result.detail)}</small>`, 502);
+  }
+  return html(
+    `投稿に失敗しました。このリンクはそのまま再度お試しいただけます。長時間経過して無効になった場合、この写真は次回の自動実行時に候補へ自動的に戻ります。<br><small>${escapeHtml(result.detail)}</small>`,
+    500
+  );
+}
+
+// 予約の公開(cronから呼ばれる)。時刻が来た予約を公開する。最後の回(UTC 8:50)でも失敗したら、
+// 予約を外して、たけしさんがリンクをもう一度押せばすぐ公開できる状態に戻す。
+async function runScheduled(env, cron) {
+  if (!env.PUBLISH_KV) return;
+  const lastTry = new Date().getUTCMinutes() >= 50;
+  const list = await env.PUBLISH_KV.list({ prefix: 'sched:' });
+  for (const k of list.keys) {
+    const id = k.name.slice('sched:'.length);
+    let at = 0;
+    try {
+      at = JSON.parse((await env.PUBLISH_KV.get(k.name)) || '{}').at || 0;
+    } catch {}
+    if (Date.now() < at) continue;
+    await env.PUBLISH_KV.put(kvKey(id), 'processing', { expirationTtl: 300 });
+    const result = await publishNow(env, id);
+    console.log(`[scheduled] ${id}: ${result.ok ? '公開した' : '失敗 ' + result.detail}`);
+    if (result.ok || lastTry) await env.PUBLISH_KV.delete(k.name);
+    if (!result.ok && !lastTry) await env.PUBLISH_KV.put(kvKey(id), 'scheduled', { expirationTtl: 60 * 60 * 24 * 2 });
+  }
+}
+
+// 実際に公開する。KVの状態(published/ロック解除)もここで更新する。
+async function publishNow(env, id) {
+  const key = kvKey(id);
+  if (env.PUBLISH_KV) await env.PUBLISH_KV.put(key, 'processing', { expirationTtl: 300 });
 
   let res;
   try {
@@ -146,7 +227,7 @@ async function handlePublish(request, env) {
     );
   } catch (err) {
     if (env.PUBLISH_KV) await env.PUBLISH_KV.delete(key);
-    return html(`通信エラーで投稿に失敗しました。もう一度お試しください。<br><small>${escapeHtml(String(err))}</small>`, 502);
+    return { ok: false, network: true, detail: String(err) };
   }
 
   let json = null;
@@ -161,19 +242,12 @@ async function handlePublish(request, env) {
     // HTTPレベルでは成功。JSON解析にだけ失敗しても、Instagram側では投稿処理が
     // 成功している可能性が高いため、ここを「失敗」と表示して再タップを誘発しない。
     if (env.PUBLISH_KV) await env.PUBLISH_KV.put(key, 'published', { expirationTtl: 60 * 60 * 24 * 30 });
-    if (parseFailed) {
-      return html('Instagramに投稿しました(応答の詳細は取得できませんでしたが、リクエスト自体は成功しています)。');
-    }
-    return html('Instagramに投稿しました!');
+    return { ok: true, parseFailed };
   }
 
   // 明確な失敗。ロックを解除し、必要なら同じリンクで再試行できるようにする。
   if (env.PUBLISH_KV) await env.PUBLISH_KV.delete(key);
-  const detail = json ? JSON.stringify(json) : `HTTP ${res.status}`;
-  return html(
-    `投稿に失敗しました。このリンクはそのまま再度お試しいただけます。長時間経過して無効になった場合、この写真は次回の自動実行時に候補へ自動的に戻ります。<br><small>${escapeHtml(detail)}</small>`,
-    500
-  );
+  return { ok: false, detail: json ? JSON.stringify(json) : `HTTP ${res.status}` };
 }
 
 // --- LINEユーザーID調べ用の一時的なWebhook ---

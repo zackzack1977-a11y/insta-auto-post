@@ -282,7 +282,7 @@ async function sendLineNotification(dishName, caption, publishUrl, expiresAt, vi
     `【Instagram投稿の確認】\n${dishName}\n\n` +
     `${caption}\n\n` +
     `🎬 投稿する動画(すぐ上の動画、またはこのリンクで再生できます。崩れていないか見てください):\n${videoUrl}\n\n` +
-    `内容を確認して問題なければ、このリンクをタップすると投稿されます:\n${publishUrl}\n\n` +
+    `内容を確認して問題なければ、このリンクをタップして「投稿する」を押してください。夕方5時に予約で公開されます(5時を過ぎてから押したときは、すぐ公開):\n${publishUrl}\n\n` +
     `⏰ このリンクは ${expiresAtJst}(日本時間)頃までが期限です。期限切れになった場合、この写真は自動で次回投稿の候補に戻ります。`;
 
   if (!LINE_USER_ID) {
@@ -442,7 +442,8 @@ async function main() {
   // 定例スケジュール実行では、本日すでに何か(手動実行分も含む)LINE提示済みなら
   // 今日はそれ以上増やさずスキップする。手動実行(workflow_dispatch)は
   // 「今日だけの例外」的な使われ方をするため、このガードの対象外とする。
-  if (GITHUB_EVENT_NAME === 'schedule') {
+  // 2026-11-20: パソコンの予定タスク(朝9時)からの実行も、DAILY_GUARD=trueで同じ扱いにする
+  if (GITHUB_EVENT_NAME === 'schedule' || process.env.DAILY_GUARD === 'true') {
     const today = todayJst();
     const alreadyToday = loadPostedList().some((entry) => presentedDateJst(entry.presentedAt) === today);
     if (alreadyToday) {
