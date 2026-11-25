@@ -4,7 +4,7 @@
 // 結果は generated/remake/ に置き、GitHub Actions の artifact で持ち帰る。費用は cost.json に残す。
 //
 // 環境変数: GEMINI_API_KEY, SAMPLE(remake-samples の中のフォルダ名), DURATION_SEC(1本の秒数、既定8),
-//           MONTHLY_CAP_USD(既定15。今月の作り置きの合計と合わせて超えるなら作らない)
+//           ONLY(作る場面のidをカンマ区切り。空なら全部), MONTHLY_CAP_USD(既定15。今月の作り置きの合計と合わせて超えるなら作らない)
 const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
@@ -31,7 +31,8 @@ function sceneCuts(file) {
 }
 
 async function main() {
-  const shots = JSON.parse(fs.readFileSync(path.join(SRC_DIR, 'shots.json'), 'utf8'));
+  const only = (env.ONLY || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const shots = JSON.parse(fs.readFileSync(path.join(SRC_DIR, 'shots.json'), 'utf8')).filter((s) => only.length === 0 || only.includes(s.id));
   const start = path.join(SRC_DIR, 'start.jpg');
   fs.mkdirSync(OUT_DIR, { recursive: true });
 

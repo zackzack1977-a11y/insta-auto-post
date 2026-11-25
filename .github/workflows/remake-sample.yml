@@ -9,6 +9,10 @@ on:
         description: 'remake-samples の中のフォルダ名'
         required: false
         default: 'ebi'
+      only:
+        description: '作る場面のid(カンマ区切り。空なら全部)'
+        required: false
+        default: ''
       duration:
         description: '1本の秒数(3〜15)'
         required: false
@@ -39,6 +43,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SAMPLE: ${{ github.event.inputs.sample }}
           DURATION_SEC: ${{ github.event.inputs.duration }}
+          ONLY: ${{ github.event.inputs.only }}
           MONTHLY_CAP_USD: '15'
         run: node src/remake-sample.js
       - uses: actions/upload-artifact@v4
