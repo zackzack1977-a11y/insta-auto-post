@@ -560,8 +560,41 @@ async function main() {
   const expiresAt = new Date(timestamp + PUBLISH_LINK_EXPIRY_MS);
 
   await sendLineVideoPreview(lineVideoUrl, linePreviewUrl);
-  await sendLineNotification(dishName || photo, caption, publishUrl, expiresAt, lineVideoUrl);
+  let lineError = null;
+  try {
+    await sendLineNotification(dishName || photo, caption, publishUrl, expiresAt, lineVideoUrl);
+  } catch (e) {
+    lineError = e;
+  }
+  // 2026-11-25: LINEが送れないとき(月の上限など)の逃げ道。公開リンクをWorkerに預け、パソコンが業務ナビに出す。
+  // 送れたときも預けておく(lineOk: true。パソコン側は、送れなかったときだけナビに出す)。
+  const stashed = await stashPublishLink({ id: creationId, ts: timestamp, sig, dish: dishName || photo, videoUrl: lineVideoUrl, lineOk: !lineError });
+  if (lineError) {
+    if (!stashed) throw lineError;
+    console.warn('LINEに確認通知を送れませんでした(' + lineError.message.slice(0, 200) + ')。公開のリンクは、パソコンの業務ナビのお知らせに出ます。');
+    return;
+  }
   console.log('LINEに確認通知を送信しました。実際の投稿はたけしさんがリンクをタップするまで行われません。');
+}
+
+// 公開リンクの材料を Worker(/stash)に預ける。リンクそのものはログに出さない(リポジトリが公開のため)。
+async function stashPublishLink(payload) {
+  try {
+    const stashUrl = PUBLISH_WORKER_URL.replace(/\/publish\/?$/, '/stash');
+    const res = await fetch(stashUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: Buffer.from(JSON.stringify(payload), 'utf8'),
+    });
+    if (!res.ok) {
+      console.warn(`公開リンクの預け入れに失敗しました(HTTP ${res.status})`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn('公開リンクの預け入れに失敗しました: ' + e.message);
+    return false;
+  }
 }
 
 main().catch(async (err) => {

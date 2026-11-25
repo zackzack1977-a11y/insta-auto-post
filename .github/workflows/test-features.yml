@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'render=文字入れの見本を作る / container=AIラベルと表紙の受け付け確認(下書きのみ) / collab=共同投稿の招待の状態を見る'
+        description: 'render=文字入れの見本を作る / container=AIラベルと表紙の受け付け確認(下書きのみ) / collab=共同投稿の招待の状態を見る / stash=LINEが送れないときの逃げ道の試験'
         required: true
         default: 'render'
       video:
@@ -62,3 +62,10 @@ jobs:
           INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
           FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
         run: node src/collab-check.js
+
+      - name: LINEが送れないときの逃げ道の試験(試験用のIDを預けるだけ。投稿はしない)
+        if: github.event.inputs.mode == 'stash'
+        env:
+          PUBLISH_SIGNING_SECRET: ${{ secrets.PUBLISH_SIGNING_SECRET }}
+          PUBLISH_WORKER_URL: ${{ secrets.PUBLISH_WORKER_URL }}
+        run: node src/test-stash.js

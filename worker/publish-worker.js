@@ -79,6 +79,10 @@ export default {
       return handleLineWebhook(request, env);
     }
 
+    if (url.pathname === '/stash' && request.method === 'POST') {
+      return handleStash(request, env, url);
+    }
+
     if (url.pathname !== '/publish') {
       return new Response('Not Found', { status: 404 });
     }
@@ -102,6 +106,36 @@ async function verifyPublishToken(env, id, ts, sig) {
   const age = Date.now() - Number(ts);
   if (!Number.isFinite(age) || age < 0 || age > LINK_EXPIRY_MS) return { ok: false, reason: 'expired' };
   return { ok: true };
+}
+
+// 2026-11-25追加: LINEが送れなかったとき(月の上限など)のための逃げ道。
+// post.js が、署名つきの公開リンクの材料(id・ts・sig)をここに預ける。署名が正しいものだけ受け取り、
+// KV の "pending-link" に、リンクの期限まで置いておく。パソコン側(insta-link-to-navi.ps1)が wrangler で読んで、
+// 業務ナビのお知らせに出す。リンクはGitHub(公開)には一切書かないため、この形にした。
+async function handleStash(request, env, url) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return new Response('bad request', { status: 400 });
+  }
+  const { id, ts, sig } = body || {};
+  const check = await verifyPublishToken(env, String(id || ''), String(ts || ''), String(sig || ''));
+  if (!check.ok) return new Response('forbidden', { status: 403 });
+  const expiresAt = Number(ts) + LINK_EXPIRY_MS;
+  const ttl = Math.max(60, Math.floor((expiresAt - Date.now()) / 1000));
+  const link = `${url.origin}/publish?id=${encodeURIComponent(id)}&ts=${ts}&sig=${sig}`;
+  const value = {
+    id: String(id),
+    link,
+    dish: String(body.dish || '').slice(0, 100),
+    videoUrl: String(body.videoUrl || '').slice(0, 500),
+    lineOk: body.lineOk === true,
+    expiresAt,
+    at: Date.now(),
+  };
+  await env.PUBLISH_KV.put('pending-link', JSON.stringify(value), { expirationTtl: ttl });
+  return new Response('ok');
 }
 
 function kvKey(id) {
