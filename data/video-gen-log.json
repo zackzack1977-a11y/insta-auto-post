@@ -77,5 +77,28 @@
       "v1_ChdxZWdHYTl1cU9QaUZ6TEVQMTZpajRBOBIXcWVnR2E5dXFPUGlGekxFUDE2aWo0QTg",
       "v1_ChczT2dHYS11ZUpvcXZ2TWNQMWFqTnlBWRIXM09nR2EtdWVKb3F2dk1jUDFhak55QVk"
     ]
+  },
+  {
+    "at": "2026-11-25T13:58:32.402Z",
+    "photo": "Zackお勧めの鶏のから揚げ.jpg",
+    "model": "gemini-omni-1.2-flash",
+    "seconds": 16,
+    "usd": 1.12,
+    "result": "ok",
+    "reason": "料理は元写真と同じ鶏のから揚げ・レモン・セロリの葉のままで、崩れやゆがみ、人の映り込みも見当たりません。カメラが寄ったり引いたりして背景の椅子も一緒に動いており、お皿だけが回っている様子もありません。湯気が出ている程度で、場面の途中で急に切り替わる箇所もありません。",
+    "portrait": true,
+    "style": "outpaint-2shots",
+    "outpaint": {
+      "outpainted": false,
+      "ssim": 1,
+      "model": null
+    },
+    "action": "Thin, gentle wisps of steam rise and curl from the hot fried chicken throughout the entire shot, with a subtle glisten on the crispy crust. There is no hot oil or sauce, so no bubbles.",
+    "camera": "push-macro + crane-down",
+    "prompt": "[1] Vertical 9:16, 8 seconds, one continuous take with no cuts, photorealistic cinematic food commercial of \"Zack's Recommended Fried Chicken (Karaage)\" served on a black round plate lined with newspaper-print paper, on a scratched wooden table (two large pieces of golden fried chicken, a lemon wedge, fresh green celery leaves, dark chairs blurred in the background). Thin, gentle wisps of steam rise and curl from the hot chicken throughout the entire shot, never stopping, with a subtle glisten on the crispy crust. The plate, the food and everything on the table stay perfectly still and fixed in place; they never rotate, spin, turn or slide. Only the camera moves. Camera choreography: from 0 to 1 second the camera holds the start framing of the whole plate; from 1 to 7 seconds it pushes in slowly and steadily toward the crunchy craggy crust of the right-hand piece near the lemon wedge; from 7 to 8 seconds it settles on a close-up where the crispy texture, glossy highlights and rising steam are clearly visible. Smooth gimbal movement, shallow depth of field, warm moody bar lighting, appetizing highlights. Keep every item the same as in the image, keep the table, napkins and background natural and undistorted, do not add ingredients, do not deform the food or the dishware. No people, no faces, no hands, no arms. No speech, no music. No text, no logos, no watermark.\n[2] Vertical 9:16, 8 seconds, one continuous take with no cuts, photorealistic cinematic food commercial of \"Zack's Recommended Fried Chicken (Karaage)\" served on a black round plate lined with newspaper-print paper, on a scratched wooden table (two large pieces of golden fried chicken, a lemon wedge, fresh green celery leaves, dark chairs blurred in the background). Thin, gentle wisps of steam rise and curl from the hot chicken throughout the entire shot, never stopping, with a subtle glisten on the crispy crust. The plate, the food and everything on the table stay perfectly still and fixed in place; they never rotate, spin, turn or slide. Only the camera moves. Camera choreography: from 0 to 1 second the camera starts slightly higher than the start framing, looking down at the plate; from 1 to 7 seconds it descends slowly and smoothly toward a low, heroic eye-level angle facing the chicken, drifting gently sideways to the right so the background chairs slide past with soft parallax; from 7 to 8 seconds it holds at the low angle with the whole dish in frame. Smooth gimbal movement, shallow depth of field, warm moody bar lighting, appetizing highlights. Keep every item the same as in the image, keep the table, napkins and background natural and undistorted, do not add ingredients, do not deform the food or the dishware. No people, no faces, no hands, no arms. No speech, no music. No text, no logos, no watermark.",
+    "interactionIds": [
+      "v1_ChdzLWtHYV9DaEpQeU0xc2dQdnRuSjhROBIXcy1rR2FfQ2hKUHlNMXNnUHZ0bko4UTg",
+      "v1_ChYydWtHYTZfckxhU0ZpTE1QbHNlSFFREhYydWtHYTZfckxhU0ZpTE1QbHNlSFFR"
+    ]
   }
 ]
