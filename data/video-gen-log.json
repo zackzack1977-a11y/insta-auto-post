@@ -35,5 +35,16 @@
     "cuts": [],
     "model": "gemini-omni-1.2-flash",
     "reason": "作り直しの見本(描き足し画像から2本つなぎ)。作り置きには入れていない"
+  },
+  {
+    "at": "2026-11-25T12:42:15.468Z",
+    "photo": "remake-sample:ebi:B2",
+    "seconds": 8,
+    "usd": 0.56,
+    "result": "sample",
+    "interactionId": "v1_Chd5dGNHYTVyTkg0dXR1TVlQMlBfOGtBaxIXeXRjR2E1ck5INHV0dU1ZUDJQXzhrQWs",
+    "cuts": [],
+    "model": "gemini-omni-1.2-flash",
+    "reason": "作り直しの見本、Bの作り直し(お皿が回ったため)。作り置きには入れていない"
   }
 ]
