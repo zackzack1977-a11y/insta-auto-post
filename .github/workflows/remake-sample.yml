@@ -1,0 +1,49 @@
+name: 動画の作り直しの見本(投稿はしない)
+
+# 上下を描き足した縦長画像から、Geminiで動きの違う動画を数本作ってつなぐ見本(src/remake-sample.js)。
+# 1本8秒で約0.56ドル。videos/ には入れず、結果は artifact に置くだけ。
+on:
+  workflow_dispatch:
+    inputs:
+      sample:
+        description: 'remake-samples の中のフォルダ名'
+        required: false
+        default: 'ebi'
+      duration:
+        description: '1本の秒数(3〜15)'
+        required: false
+        default: '8'
+
+permissions:
+  contents: read
+
+# 本番の投稿(post.yml)の列には入れない
+concurrency:
+  group: video-gen
+  cancel-in-progress: false
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: ffmpegをインストール
+        timeout-minutes: 35
+        run: bash scripts/install-apt.sh ffmpeg
+      - name: 見本を作る
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SAMPLE: ${{ github.event.inputs.sample }}
+          DURATION_SEC: ${{ github.event.inputs.duration }}
+          MONTHLY_CAP_USD: '15'
+        run: node src/remake-sample.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: remake-sample
+          path: generated/remake/
+          retention-days: 7
