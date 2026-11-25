@@ -5,6 +5,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ACCESS_TEXT = '富士駅から徒歩10分';
+const STORE_TEXT = 'Food & Bar Zack';
 
 // 日本語の太字フォント。GitHub Actions(Ubuntu)は fonts-noto-cjk、手元のWindowsは游ゴシック等。
 const FONT_CANDIDATES = [
@@ -171,9 +172,16 @@ function buildStyledOverlay(style, dishName, { width, height }, workDir) {
     const titleBottom = titleTop + lines.length * titleSize + (lines.length - 1) * lineGap;
     const ruleY = titleBottom + Math.round(width * 0.03);
     const subSize = Math.round(width * 0.042);
-    const subTop = ruleY + Math.round(width * 0.03);
+    // 2026-11-25、たけしさんの指摘: 料理名の下が「富士駅から徒歩10分」だけだと、料理が駅から10分のように読めて、
+    // お店の名前も無い。手書き風(hand)は、線の下に店名、その下に「富士駅から徒歩10分」を置く。
+    const storeSize = style === 'hand' ? Math.round(width * 0.058) : 0;
+    const storeTop = ruleY + Math.round(width * 0.03);
+    const subTop = style === 'hand' ? storeTop + Math.round(storeSize * 1.3) : ruleY + Math.round(width * 0.03);
     const bandTop = top - Math.round(width * 0.04);
     parts.push(...softBand(bandTop, subTop + subSize + Math.round(width * 0.04) - bandTop, style === 'mincho' ? 0.34 : 0.3));
+    if (style === 'hand') {
+      pushWithHalo(parts, `fontfile='${styleFont(f.sub)}':textfile='${write('store', STORE_TEXT)}':fontsize=${storeSize}:x=(w-text_w)/2:y=${storeTop}:${fadeIn(0.9)}`, accentColor, Math.max(2, Math.round(storeSize * 0.1)));
+    }
     pushWithHalo(parts, `fontfile='${styleFont(f.accent)}':textfile='${write('accent', accentText)}':fontsize=${accentSize}:x=(w-text_w)/2:y=${top}:${fadeIn(0.2)}`, accentColor, Math.max(2, Math.round(accentSize * 0.08)));
     lines.forEach((line, i) => {
       const y = titleTop + i * (titleSize + lineGap);
