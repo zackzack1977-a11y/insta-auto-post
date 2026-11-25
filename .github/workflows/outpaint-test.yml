@@ -1,0 +1,40 @@
+name: 上下の描き足しの確認(投稿はしない)
+
+# 写真1枚の上下を、Geminiの画像の機能で描き足して縦9:16にする(src/outpaint.js)。1枚約0.07ドル以下。
+# 結果は artifact に置くだけで、リポジトリには何も書き込まない。
+on:
+  workflow_dispatch:
+    inputs:
+      photo:
+        description: 'photos/の中のファイル名'
+        required: true
+        default: '海老のアヒージョ.jpg'
+
+permissions:
+  contents: read
+
+jobs:
+  outpaint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: ffmpegをインストール
+        timeout-minutes: 35
+        run: bash scripts/install-apt.sh ffmpeg
+      - name: 描き足す
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PHOTO: ${{ github.event.inputs.photo }}
+        run: |
+          mkdir -p generated/outpaint
+          DISH_NAME="${PHOTO%.*}" node src/outpaint.js "photos/$PHOTO" generated/outpaint/start.jpg
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: outpaint
+          path: generated/outpaint/
+          retention-days: 7
