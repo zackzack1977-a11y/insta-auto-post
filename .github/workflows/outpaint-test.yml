@@ -9,6 +9,10 @@ on:
         description: 'photos/の中のファイル名'
         required: true
         default: '海老のアヒージョ.jpg'
+      modes:
+        description: '試す形(gray / direct / blur をカンマで)。1つ約0.07ドル以下'
+        required: false
+        default: 'gray'
 
 permissions:
   contents: read
@@ -29,9 +33,10 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PHOTO: ${{ github.event.inputs.photo }}
+          MODES: ${{ github.event.inputs.modes }}
         run: |
           mkdir -p generated/outpaint
-          DISH_NAME="${PHOTO%.*}" node src/outpaint.js "photos/$PHOTO" generated/outpaint/start.jpg
+          DISH_NAME="${PHOTO%.*}" OUTPAINT_MODES="$MODES" node src/outpaint.js "photos/$PHOTO" generated/outpaint
       - uses: actions/upload-artifact@v4
         if: always()
         with:
