@@ -54,5 +54,28 @@
     "usd": 0.21,
     "result": "sample",
     "reason": "上下の描き足しの試し3回(ぼかし・灰色・そのまま)"
+  },
+  {
+    "at": "2026-11-25T13:54:05.902Z",
+    "photo": "4種のお料理のZackプレート.jpg",
+    "model": "gemini-omni-1.2-flash",
+    "seconds": 16,
+    "usd": 1.12,
+    "result": "ok",
+    "reason": "シーン途中の不自然な切り替わりはなく、料理（生ハム・サラミ・ローストビーフ・パテ・パン・ピクルス）は元写真と同じ内容です。カメラが寄っていくのに合わせて背景の市松模様なども動いており、お皿が単独で回っている様子もありません。テーブルや店内に目立つ崩れはなく、人や手も映っていません。",
+    "portrait": true,
+    "style": "outpaint-2shots",
+    "outpaint": {
+      "outpainted": false,
+      "ssim": 1,
+      "model": null
+    },
+    "action": "none",
+    "camera": "push-macro + truck-rise",
+    "prompt": "[1] Vertical 9:16, 8 seconds, one continuous take with no cuts, photorealistic cinematic food commercial of \"Zack Plate of 4 Kinds of Dishes\" served on a rectangular black slate board, on a scratched wooden bar counter (a small white cup of pickled vegetable sticks with celery leaves, carrot, red and yellow pepper and radish, sliced cured ham and salami, thin slices of roast beef topped with grated cheese and thyme sprigs, toasted baguette slices, two breadsticks, pâté with a dill sprig, a small piece of white cheese). Cold dish, no steam; only subtle glistening light plays on the meat and vegetables during the entire shot. The plate, the food and everything on the table stay perfectly still and fixed in place; they never rotate, spin, turn or slide. Only the camera moves. Camera choreography: 0-1s hold on the start framing; 1-7s a slow steady push-in toward the sliced roast beef and cured ham on the right, lowering slightly; 7-8s settle on a close-up where the glossy meat, cheese and thyme are clearly visible. Smooth gimbal movement, shallow depth of field, warm moody bar lighting, appetizing highlights. Keep every item the same as in the image, keep the table, napkins and background natural and undistorted, do not add ingredients, do not deform the food or the dishware. No people, no faces, no hands, no arms. No speech, no music. No text, no logos, no watermark.\n[2] Vertical 9:16, 8 seconds, one continuous take with no cuts, photorealistic cinematic food commercial of \"Zack Plate of 4 Kinds of Dishes\" served on a rectangular black slate board, on a scratched wooden bar counter (a small white cup of pickled vegetable sticks with celery leaves, carrot, red and yellow pepper and radish, sliced cured ham and salami, thin slices of roast beef topped with grated cheese and thyme sprigs, toasted baguette slices, two breadsticks, pâté with a dill sprig, a small piece of white cheese). Cold dish, no steam; only subtle glistening light shimmers on the meat and vegetables during the entire shot. The plate, the food and everything on the table stay perfectly still and fixed in place; they never rotate, spin, turn or slide. Only the camera moves. Camera choreography: 0-1s hold on the start framing; 1-7s a slow steady dolly sideways to the right while gently rising in height, the dark bar shelves and warm lights sliding past with natural parallax, the whole dish staying in frame; 7-8s ease to a gentle stop at a slightly higher three-quarter view. Smooth gimbal movement, shallow depth of field, warm moody bar lighting, appetizing highlights. Keep every item the same as in the image, keep the table, napkins and background natural and undistorted, do not add ingredients, do not deform the food or the dishware. No people, no faces, no hands, no arms. No speech, no music. No text, no logos, no watermark.",
+    "interactionIds": [
+      "v1_ChdxZWdHYTl1cU9QaUZ6TEVQMTZpajRBOBIXcWVnR2E5dXFPUGlGekxFUDE2aWo0QTg",
+      "v1_ChczT2dHYS11ZUpvcXZ2TWNQMWFqTnlBWRIXM09nR2EtdWVKb3F2dk1jUDFhak55QVk"
+    ]
   }
 ]
