@@ -3,16 +3,18 @@
 //
 // 流れ(写真1枚ごと):
 //   1. 候補を選ぶ: 未投稿・動画なし・2回不合格になっていない写真。縦長の写真を先にする
-//   2. 写真を正しい向きに直し、Claudeに「料理の中心」と「指示文(比較で一番良かったCの型)」を作らせる
-//   3. 料理を中心に縦9:16に切り出す(9:16に近い縦長の写真は切らない)
-//   4. Gemini APIで12秒の動画を作る
-//   5. 最初の0.6秒以内のカットは切り落とす → check-video.js(切り替わり・縦横比・長さ)→ Claudeが写真と見比べる
+//   2. 写真を正しい向きに直し、上下をGeminiの画像の機能で描き足して縦9:16にする(src/outpaint.js。料理の部分は元の写真を貼り戻す)
+//   3. Claudeが、描き足した画像を見て、カメラの動きが違う2場面の指示文を作る(動きの候補は CAMERA_MOVES。毎回変える)
+//   4. Gemini APIで8秒の動画を2本作る(2026-11-25から。以前は切り出した写真から12秒1本で、近すぎた)
+//   5. 最初の0.6秒以内のカットは切り落とし、場面ごとに切り替わりを確かめる → 0.5秒重ねてつなぐ(約15.5秒)
+//      → check-video.js → Claudeが写真と見比べる(料理が別物/ゆがみ/お皿が回る/人や手が映る、は不合格)
+//   写真をスライドさせるだけ・ずらすだけの場面(ffmpegで写真を動かす編集)は使わない(たけしさんの指示)
 //   6. 合格なら videos/写真名.mp4 に入れる。費用と結果は data/video-gen-log.json に必ず残す
 //   7. LINEで知らせる(合格なら、文字入れとBGMを付けた仕上がりの見本の動画も送る)
 //
 // お金の守り:
 //   ・1回の実行で作るのは MAX_VIDEOS 本まで(既定1、どう指定しても2まで)
-//   ・長さは DURATION_SEC 秒(既定12、3〜15)
+//   ・1場面の長さは DURATION_SEC 秒(既定8、5〜10)×2場面。1品あたり 8秒×2本+描き足し1枚 ≒ 1.19ドル
 //   ・今月の合計(日本時間の月)+今回の分が MONTHLY_CAP_USD(既定15ドル)を超えるなら作らない
 //   ・定期実行では、使える在庫が STOCK_TARGET 本(既定6)以上あれば作らない(手動実行の FORCE=true は除く)
 //   ・同じ写真が2回不合格・失敗したら、候補から外す
@@ -25,6 +27,7 @@ const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const { ROOT, PHOTOS_DIR, PREMADE_VIDEOS_DIR, IMAGE_EXTENSIONS, loadPostedList, findPremadeVideoPath } = require('./shared');
 const { generateOmniVideo, estimateUsd, MODEL } = require('./gemini-video');
+const { outpaintVertical, USD_PER_IMAGE } = require('./outpaint');
 const { renderFinalVideo } = require('./video-edit');
 const { dishNameFromFilename, pickRandomMusic } = require('./post-helpers');
 
@@ -41,7 +44,10 @@ const WORK_DIR = path.join(ROOT, 'generated', 'video-gen');
 const LOG_FILE = path.join(ROOT, 'data', 'video-gen-log.json');
 const SKIP_FILE = path.join(ROOT, 'data', 'video-skip.json');
 const MAX_VIDEOS = Math.min(2, Math.max(1, parseInt(env.MAX_VIDEOS, 10) || 1));
-const DURATION_SEC = Math.min(15, Math.max(3, parseInt(env.DURATION_SEC, 10) || 12));
+// 1場面の秒数(既定8)と場面の数(2)。つなぐと約15.5秒になる
+const SHOT_SEC = Math.min(10, Math.max(5, parseInt(env.DURATION_SEC, 10) || 8));
+const SHOTS = 2;
+const COST_PER_PHOTO = Math.round((estimateUsd(SHOT_SEC) * SHOTS + USD_PER_IMAGE) * 100) / 100;
 const MONTHLY_CAP_USD = Number(env.MONTHLY_CAP_USD) > 0 ? Number(env.MONTHLY_CAP_USD) : 15;
 const STOCK_TARGET = parseInt(env.STOCK_TARGET, 10) > 0 ? parseInt(env.STOCK_TARGET, 10) : 6;
 const FORCE = env.FORCE === 'true';
@@ -187,57 +193,71 @@ function smallCopy(src, out, box = 1400) {
   return out;
 }
 
-// 写真を見て、料理の中心・構図・指示文を作る(比較で一番良かった「C」の型)
-async function planVideo(smallPhoto, dishName, note, portrait) {
-  const text = `You are writing a prompt for an image-to-video model (Gemini Omni Flash) for a restaurant's Instagram Reel.
-The attached photo is the start image. The dish's official Japanese name is 「${dishName}」.${note ? `\nOwner's note about the dish (Japanese): ${note}` : ''}
-The photo was taken ${portrait ? 'in portrait orientation' : 'in landscape orientation and will be center-cropped to vertical 9:16 around the dish'}.
+// 2026-11-25 作り方を変えた(たけしさんの要望): 切り出しは近すぎて「押し込むだけ」になっていたので、
+// 上下を描き足した縦長の画像(src/outpaint.js、料理は元の写真のまま)から、カメラの動きが違う2場面を作ってつなぐ。
+// 写真をスライドさせるだけ・ずらすだけの編集(ffmpegで写真を動かす場面)は使わない。全部の場面が実写の動き。
+// 毎回同じにならないよう、カメラの動きは下の中から、料理に合わせてClaudeが2つ選ぶ。
+const CAMERA_MOVES = [
+  'low-orbit: the camera smoothly lowers toward table height while moving a little closer, then glides sideways in a slow arc of about 25 degrees around the dish (the background visibly slides past behind the dish)',
+  'truck-rise: a slow, steady sideways dolly (camera trucking left or right) combined with a gentle rise in height, the background bar shelves and lights sliding past with natural parallax, the whole dish staying in frame',
+  'push-macro: a slow push-in from the start framing toward the most appetizing part of the dish, ending in a close-up where steam/bubbles/gloss are clearly visible',
+  'crane-down: the camera starts slightly higher and slowly descends to a low, heroic eye-level angle facing the dish, with a slight sideways drift',
+  'top-tilt: the camera rises and tilts down to a high three-quarter view showing the whole plate and the table around it, then drifts slowly sideways',
+  'slow-reveal: starting a little closer than the start framing on the dish, the camera slowly pulls back and rises to show the whole plate and some of the table and bar around it',
+];
+
+// 描き足した縦長の画像を見て、2場面ぶんの指示文を作る
+async function planVideo(startSmall, dishName, note) {
+  const text = `You are directing two short shots for a restaurant's Instagram Reel, made with an image-to-video model (Gemini Omni Flash).
+The attached vertical 9:16 image is the start frame of BOTH shots. The dish's official Japanese name is 「${dishName}」.${note ? `\nOwner's note about the dish (Japanese): ${note}` : ''}
+
+Choose TWO different camera moves from this list that suit this dish (vary them; do not always pick the first ones):
+${CAMERA_MOVES.map((m) => '- ' + m).join('\n')}
 
 Return ONLY a JSON object:
 {
- "center_x": 0-1 (horizontal center of the main plate in this photo, fraction of width),
- "center_y": 0-1 (vertical center of the main plate, fraction of height),
- "composition": "wide" if the whole plate and some table/background are visible, "close" if the plate is cut off by the frame,
- "action": short label of the food action you chose, or "none",
- "camera": short label of the camera moves,
- "prompt": the English prompt
+ "action": the natural live food motion you chose, or "none",
+ "shots": [
+  {"move": "the move name", "prompt": "the English prompt for shot 1"},
+  {"move": "the move name", "prompt": "the English prompt for shot 2"}
+ ]
 }
 
-Write "prompt" in exactly this structure (fill the brackets, ~110-150 words):
-Vertical 9:16, ${DURATION_SEC} seconds, one continuous take with no cuts, photorealistic cinematic food commercial of "[faithful English translation of the Japanese dish name]" on [the plate/vessel and surface exactly as seen] ([comma list of ONLY the items you can actually see]). Camera choreography: 0-3s [...]; 3-7s [...]; 7-${DURATION_SEC}s [...]. Smooth gimbal movement, shallow depth of field, warm moody bar lighting, appetizing highlights. Keep every item the same as in the photo, do not add ingredients, do not deform the food. No people or faces. Natural soft restaurant ambience only, no speech, no music. No text, no logos, no watermark.
+Write each "prompt" in exactly this structure (~120-160 words):
+Vertical 9:16, ${SHOT_SEC} seconds, one continuous take with no cuts, photorealistic cinematic food commercial of "[faithful English translation of the Japanese dish name]" served [on/in the plate/vessel exactly as seen], on [the surface as seen] ([comma list of ONLY the items you can actually see]). [The live food motion, described as continuing during the entire shot, never freezing.] The plate, the food and everything on the table stay perfectly still and fixed in place; they never rotate, spin, turn or slide. Only the camera moves. Camera choreography: [the chosen move, written out with timings in seconds]. Smooth gimbal movement, shallow depth of field, warm moody bar lighting, appetizing highlights. Keep every item the same as in the image, keep the table, napkins and background natural and undistorted, do not add ingredients, do not deform the food or the dishware. No people, no faces, no hands, no arms. No speech, no music. No text, no logos, no watermark.
 
-Camera rules:
-- "wide": 0-3s extreme macro close-up gliding across the most appetizing part; 3-7s the camera smoothly pulls back and rises to reveal the whole plate [+ the food action]; 7-end a slow orbit of at most 30 degrees around the plate ending with a gentle push-in.
-- "close": 0-3s extreme macro close-up gliding across the food; 3-7s a slow pull-back only as far as the original photo framing [+ the food action]; 7-end a gentle push-in. NO orbit and do not reveal anything outside the photo (it would make the model invent unseen parts).
-Food action rules (choose at most ONE, only if natural for this dish): a spoon drizzling a glossy ribbon of the dish's own sauce (only if the dish clearly has that sauce, or the note says so); steam rising (hot dishes only); melted cheese stretching (only for visibly cheesy hot dishes). For raw, cold or fried-dry dishes (sashimi, oysters, carpaccio, salads, vegetable sticks, fries) use "none" and rely on light and camera only. Only a hand holding the spoon may appear. Never add ingredients, garnish or sauce that are not in the photo or note.`;
-  const answer = await askClaude([imageBlock(smallPhoto), { type: 'text', text }]);
+Live food motion rules: hot dishes → steam rising and curling, plus gentle sizzling bubbles only if there is hot oil or sauce (e.g. ajillo, gratin, hot pan). Melted cheese → a slight glisten, no stretching unless the image shows it. Cold or raw dishes (sashimi, carpaccio, salads, vegetable sticks, oysters, desserts) → "none": no steam; use subtle glistening light only. Never add ingredients, garnish, sauce, utensils or hands that are not in the image or note.
+Never use the word "orbit" or ask the dish to rotate: describe how the CAMERA moves around a still dish.`;
+  const answer = await askClaude([imageBlock(startSmall), { type: 'text', text }]);
   const plan = parseJson(answer);
-  plan.center_x = Math.min(1, Math.max(0, Number(plan.center_x) || 0.5));
-  plan.center_y = Math.min(1, Math.max(0, Number(plan.center_y) || 0.5));
-  if (!plan.prompt || plan.prompt.length < 50) throw new Error('指示文が作れませんでした');
+  if (!Array.isArray(plan.shots) || plan.shots.length < SHOTS || plan.shots.some((s) => !s.prompt || s.prompt.length < 80)) throw new Error('指示文が作れませんでした');
+  plan.shots = plan.shots.slice(0, SHOTS);
   return plan;
 }
 
-// 料理を中心に、縦9:16に切り出して 1080x1920 以内にする
-function cropVertical(upright, size, plan, outPath) {
-  const r = 9 / 16;
-  const { width: W, height: H } = size;
-  let vf;
-  if (W / H > r * 1.03) {
-    const cw = Math.floor((H * r) / 2) * 2;
-    const x = Math.round(Math.min(W - cw, Math.max(0, plan.center_x * W - cw / 2)));
-    vf = `crop=${cw}:${H}:${x}:0`;
-  } else if (W / H < r / 1.03) {
-    const ch = Math.floor(W / r / 2) * 2;
-    const y = Math.round(Math.min(H - ch, Math.max(0, plan.center_y * H - ch / 2)));
-    vf = `crop=${W}:${ch}:0:${y}`;
-  } else {
-    vf = 'null';
+// 2つの場面を、そろった形(1080x1920、30コマ、音なし)にして、0.5秒の重ね合わせでつなぐ
+function joinShots(files, outPath) {
+  const norm = files.map((f) => {
+    const n = f.replace(/\.mp4$/, '_n.mp4');
+    run('ffmpeg', ['-y', '-loglevel', 'error', '-i', f, '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,format=yuv420p', '-an', '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', n]);
+    return n;
+  });
+  if (norm.length === 1) {
+    fs.copyFileSync(norm[0], outPath);
+    return;
   }
-  run('ffmpeg', ['-y', '-loglevel', 'error', '-i', upright, '-vf', `${vf},scale=1080:1920:force_original_aspect_ratio=decrease`, '-q:v', '2', outPath]);
-  return vf;
+  const dur = (f) => Number(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).trim());
+  let chain = '';
+  let last = '[0:v]';
+  let offset = 0;
+  for (let i = 1; i < norm.length; i += 1) {
+    offset += dur(norm[i - 1]) - 0.5;
+    const label = i === norm.length - 1 ? '[v]' : `[x${i}]`;
+    chain += `${last}[${i}:v]xfade=transition=fade:duration=0.5:offset=${offset.toFixed(2)}${label};`;
+    last = label;
+  }
+  run('ffmpeg', ['-y', '-loglevel', 'error', ...norm.flatMap((f) => ['-i', f]), '-filter_complex', chain.replace(/;$/, ''), '-map', '[v]', '-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', outPath]);
 }
-
 // ---------- できた動画の後始末と合格チェック ----------
 function sceneCuts(file) {
   const out = spawnSync('ffmpeg', ['-hide_banner', '-i', file, '-vf', "select='gt(scene,0.3)',showinfo", '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
@@ -263,16 +283,15 @@ function machineCheck(video) {
 async function visualCheck(smallPhoto, sheet, dishName) {
   const sheetJpg = sheet.replace(/\.png$/, '.jpg');
   run('ffmpeg', ['-y', '-loglevel', 'error', '-i', sheet, '-q:v', '3', sheetJpg]);
-  const text = `1枚目は料理「${dishName}」の元の写真、2枚目はその写真から作った動画を1秒ごとに並べたコマ(左上から順)です。
-次の3つのどれかに当てはまるときだけ不合格にしてください。
-①途中で別の場面・別のお皿に切り替わる ②料理そのものが写真と別物になっている(主役の食材や盛り付けが違う) ③引き伸ばし・ゆがみ・溶けたような崩れ・ノイズ
-背景に棚や厨房が少し入る、添え物が少し増える、カメラが寄ったり回り込んだりする、程度は合格です。
+  const text = `1枚目は料理「${dishName}」の元の写真、2枚目はその写真の上下をAIで描き足してから作った動画を、1秒ごとに並べたコマ(左上から順)です。動画は2つの場面を、なめらかに重ねてつないであります(場面のつなぎ目は不合格の理由にしない)。
+次のどれかに当てはまるときだけ不合格にしてください。
+①1つの場面の途中で、別の場面・別のお皿にパッと切り替わる ②料理そのものが写真と別物になっている(主役の食材や盛り付けが違う) ③引き伸ばし・ゆがみ・溶けたような崩れ・ノイズ(描き足したテーブルや店内も含む) ④お皿や料理そのものが回ったり動いたりしている(カメラが動くなら、奥の景色が流れて見えるはず。奥が止まったままお皿の向きだけ変わるのは不合格) ⑤人・顔・手・腕がはっきり映っている(奥にぼんやり見える程度は可)
+背景に棚や厨房や店内が入る、添え物が少し増える、カメラが寄ったり回り込んだりする、程度は合格です。
 JSONだけで答えてください: {"ok": true か false, "reason": "日本語で短く"}`;
   const answer = await askClaude([imageBlock(smallPhoto), imageBlock(sheetJpg), { type: 'text', text }]);
   const j = parseJson(answer);
   return { ok: j.ok === true, reason: String(j.reason || '') };
 }
-
 // ---------- LINE ----------
 async function pushLine(messages) {
   if (!env.LINE_CHANNEL_ACCESS_TOKEN || !env.LINE_USER_ID) {
@@ -303,38 +322,80 @@ async function makeOne(cand, log) {
   const upright = path.join(dir, 'upright.jpg');
   const size = makeUpright(path.join(PHOTOS_DIR, photo), upright);
   const small = smallCopy(upright, path.join(dir, 'small.jpg'));
-  const plan = await planVideo(small, dishName, note, cand.portrait);
-  const cropPath = path.join(dir, 'start.jpg');
-  const crop = cropVertical(upright, size, plan, cropPath);
-  console.log(`写真: ${photo}(${cand.portrait ? '縦長' : '横長'}、${size.width}x${size.height}、切り出し ${crop})`);
-  console.log(`構図: ${plan.composition} / 動き: ${plan.camera} / 料理の動き: ${plan.action}`);
-  console.log('指示文:\n' + plan.prompt);
+  const entry = { at: new Date().toISOString(), photo, model: MODEL, seconds: 0, usd: 0, result: 'error', reason: '', portrait: cand.portrait, style: 'outpaint-2shots' };
 
-  const entry = { at: new Date().toISOString(), photo, model: MODEL, seconds: DURATION_SEC, usd: 0, result: 'error', reason: '', portrait: cand.portrait, composition: plan.composition, camera: plan.camera, action: plan.action, prompt: plan.prompt };
   if (DRY_RUN) {
-    console.log('DRY_RUN のため、動画は作りません');
+    console.log(`DRY_RUN のため、描き足しと動画は作りません(${photo}、${size.width}x${size.height})`);
     return { entry: null };
   }
-
-  const raw = path.join(dir, 'raw.mp4');
   log.push(entry);
+
+  // 1. 上下を描き足して、縦9:16の始まりの画像を作る(料理の部分は元の写真のまま)
+  const startPath = path.join(dir, 'start.jpg');
   try {
-    const r = await generateOmniVideo({ apiKey: env.GEMINI_API_KEY, imagePath: cropPath, prompt: plan.prompt, seconds: DURATION_SEC, outPath: raw });
-    entry.usd = r.estimatedUsd;
-    entry.interactionId = r.interactionId;
+    let op = await outpaintVertical({ apiKey: env.GEMINI_API_KEY, uprightPath: upright, outPath: startPath, workDir: path.join(dir, 'outpaint'), dishName, mode: 'gray' });
+    entry.usd += op.usd;
+    if (op.outpainted && !op.ok) {
+      console.warn(`描き足しで写真の位置がずれました(一致度 ${op.ssim.toFixed(2)})。もう1回だけ試します`);
+      op = await outpaintVertical({ apiKey: env.GEMINI_API_KEY, uprightPath: upright, outPath: startPath, workDir: path.join(dir, 'outpaint2'), dishName, mode: 'gray' });
+      entry.usd += op.usd;
+    }
+    entry.outpaint = { outpainted: op.outpainted, ssim: op.ssim, model: op.model };
+    if (op.outpainted && !op.ok) throw new Error(`描き足しで写真の位置がずれました(一致度 ${op.ssim.toFixed(2)})`);
   } catch (e) {
-    // 入力の誤り(400など)は料金がかからないとみる。時間切れやサーバーの不具合は、かかったものとして数える
-    entry.usd = e.httpStatus && e.httpStatus >= 400 && e.httpStatus < 500 && e.httpStatus !== 429 ? 0 : estimateUsd(DURATION_SEC);
-    entry.reason = e.message.slice(0, 300);
-    console.error('動画づくりに失敗: ' + e.message);
+    entry.reason = '上下の描き足しに失敗: ' + e.message.slice(0, 250);
+    console.error(entry.reason);
     return { entry };
   }
 
-  const trimmed = path.join(dir, 'video.mp4');
+  // 2. 2場面ぶんの指示文
+  let plan;
   try {
+    plan = await planVideo(smallCopy(startPath, path.join(dir, 'start_small.jpg')), dishName, note);
+  } catch (e) {
+    entry.reason = '指示文づくりに失敗: ' + e.message.slice(0, 250);
+    return { entry };
+  }
+  entry.action = plan.action;
+  entry.camera = plan.shots.map((s) => s.move).join(' + ');
+  entry.prompt = plan.shots.map((s, i) => `[${i + 1}] ${s.prompt}`).join('\n');
+  console.log(`料理の動き: ${plan.action} / カメラ: ${entry.camera}`);
+  console.log('指示文:\n' + entry.prompt);
+
+  // 3. 場面ごとに動画を作る(1つ目で失敗・切り替わりがあれば、2つ目は作らずにお金を守る)
+  const clips = [];
+  entry.interactionIds = [];
+  for (let i = 0; i < plan.shots.length; i += 1) {
+    const raw = path.join(dir, `raw${i + 1}.mp4`);
+    try {
+      const r = await generateOmniVideo({ apiKey: env.GEMINI_API_KEY, imagePath: startPath, prompt: plan.shots[i].prompt, seconds: SHOT_SEC, outPath: raw });
+      entry.usd += r.estimatedUsd;
+      entry.seconds += r.seconds;
+      entry.interactionIds.push(r.interactionId);
+    } catch (e) {
+      entry.usd += e.httpStatus && e.httpStatus >= 400 && e.httpStatus < 500 && e.httpStatus !== 429 ? 0 : estimateUsd(SHOT_SEC);
+      entry.reason = `場面${i + 1}の動画づくりに失敗: ` + e.message.slice(0, 250);
+      console.error(entry.reason);
+      return { entry };
+    }
+    const trimmed = path.join(dir, `shot${i + 1}.mp4`);
     const cutAt = trimLeadingCut(raw, trimmed);
-    if (cutAt) console.log(`最初の${cutAt.toFixed(2)}秒にカットがあったので切り落としました`);
-    const mc = machineCheck(trimmed);
+    if (cutAt) console.log(`場面${i + 1}: 最初の${cutAt.toFixed(2)}秒にカットがあったので切り落としました`);
+    const cuts = sceneCuts(trimmed).filter((t) => t > 0.5);
+    if (cuts.length) {
+      entry.result = 'ng';
+      entry.reason = `場面${i + 1}の途中で場面が切り替わっている(${cuts.map((t) => t.toFixed(1)).join('、')}秒)`;
+      console.log('判定: ng ' + entry.reason);
+      return { entry };
+    }
+    clips.push(trimmed);
+  }
+
+  // 4. つないで、機械の確認と、目での確認
+  const video = path.join(dir, 'video.mp4');
+  try {
+    joinShots(clips, video);
+    const mc = machineCheck(video);
     let vc = { ok: false, reason: '' };
     if (mc.ok) vc = await visualCheck(small, mc.sheet, dishName);
     entry.result = mc.ok && vc.ok ? 'ok' : 'ng';
@@ -344,10 +405,10 @@ async function makeOne(cand, log) {
     entry.result = 'error';
     entry.reason = 'できた動画の確認中のエラー: ' + e.message.slice(0, 200);
   }
-  console.log(`判定: ${entry.result} ${entry.reason}`);
-  return { entry, video: trimmed, dir, dishName };
+  entry.usd = Math.round(entry.usd * 100) / 100;
+  console.log(`判定: ${entry.result} ${entry.reason}(費用 $${entry.usd})`);
+  return { entry, video, dir, dishName };
 }
-
 // ---------- 全体 ----------
 async function main() {
   const branch = env.GITHUB_REF_NAME || 'master';
@@ -375,7 +436,7 @@ async function main() {
 
   const results = [];
   for (const cand of cands.slice(0, MAX_VIDEOS)) {
-    const cost = estimateUsd(DURATION_SEC);
+    const cost = COST_PER_PHOTO;
     if (!DRY_RUN && spentThisMonth(log) + cost > MONTHLY_CAP_USD) {
       const msg = `【動画の作り置き】今月の動画代が上限($${MONTHLY_CAP_USD})に届くので、作るのを止めました。今月の合計: $${spentThisMonth(log).toFixed(2)}`;
       console.log(msg);

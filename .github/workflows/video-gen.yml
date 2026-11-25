@@ -1,7 +1,7 @@
 name: 動画の作り置き(Gemini)
 
 # 写真から、Gemini API(gemini-omni-1.2-flash)で作り置きの動画を作る(src/gen-video.js)。
-# 1本12秒で約0.84ドル。お金の守りは gen-video.js の冒頭を参照。
+# 2026-11-25から: 上下を描き足した縦長の画像から、8秒×2場面を作ってつなぐ。1品約1.19ドル。お金の守りは gen-video.js の冒頭を参照。
 # 今は手動だけ。試しの1本がよければ、定期実行(schedule)を足す。
 on:
   workflow_dispatch:
@@ -15,9 +15,9 @@ on:
         required: false
         default: '1'
       duration:
-        description: '動画の長さ(秒、3〜15)'
+        description: '1場面の長さ(秒、5〜10)。2場面つなぐ'
         required: false
-        default: '12'
+        default: '8'
       dry_run:
         description: 'trueなら動画は作らず、指示文と切り出しだけ確かめる(費用なし)'
         required: false
