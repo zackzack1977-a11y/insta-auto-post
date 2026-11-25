@@ -46,5 +46,13 @@
     "cuts": [],
     "model": "gemini-omni-1.2-flash",
     "reason": "作り直しの見本、Bの作り直し(お皿が回ったため)。作り置きには入れていない"
+  },
+  {
+    "at": "2026-11-25T13:50:27.274Z",
+    "photo": "outpaint-test:海老のアヒージョ.jpg",
+    "model": "gemini-3.1-flash-image-preview",
+    "usd": 0.21,
+    "result": "sample",
+    "reason": "上下の描き足しの試し3回(ぼかし・灰色・そのまま)"
   }
 ]
