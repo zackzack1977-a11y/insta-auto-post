@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'render=文字入れの見本を作る / container=AIラベルと表紙の受け付け確認(下書きのみ) / collab=共同投稿の招待の状態を見る / stash=LINEが送れないときの逃げ道の試験'
+        description: 'render=文字入れの見本を作る / container=AIラベルと表紙の受け付け確認(下書きのみ) / collab=共同投稿の招待の状態を見る / stash=LINEが送れないときの逃げ道の試験 / notify=知らせの送り先の試し'
         required: true
         default: 'render'
       video:
@@ -69,3 +69,15 @@ jobs:
           PUBLISH_SIGNING_SECRET: ${{ secrets.PUBLISH_SIGNING_SECRET }}
           PUBLISH_WORKER_URL: ${{ secrets.PUBLISH_WORKER_URL }}
         run: node src/test-stash.js
+
+      - name: 知らせの送り先の試し(本番と同じ形で1通。投稿はしない)
+        if: github.event.inputs.mode == 'notify'
+        env:
+          PUBLISH_SIGNING_SECRET: ${{ secrets.PUBLISH_SIGNING_SECRET }}
+          PUBLISH_WORKER_URL: ${{ secrets.PUBLISH_WORKER_URL }}
+          NOTIFY_CHANNEL: ${{ vars.NOTIFY_CHANNEL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: node src/test-notify.js

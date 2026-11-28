@@ -28,6 +28,7 @@ const { execFileSync, spawnSync } = require('child_process');
 const { ROOT, PHOTOS_DIR, PREMADE_VIDEOS_DIR, IMAGE_EXTENSIONS, loadPostedList, findPremadeVideoPath } = require('./shared');
 const { generateOmniVideo, estimateUsd, MODEL } = require('./gemini-video');
 const { outpaintVertical, USD_PER_IMAGE } = require('./outpaint');
+const { notify } = require('./notify');
 const { renderFinalVideo } = require('./video-edit');
 const { dishNameFromFilename, pickRandomMusic } = require('./post-helpers');
 
@@ -293,17 +294,9 @@ JSONだけで答えてください: {"ok": true か false, "reason": "日本語�
   return { ok: j.ok === true, reason: String(j.reason || '') };
 }
 // ---------- LINE ----------
+// 2026-11-28: 送り先は src/notify.js(NOTIFY_CHANNEL で Discord / LINE を切り替え)
 async function pushLine(messages) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !env.LINE_USER_ID) {
-    console.warn('LINEの設定が無いので、知らせは送りません');
-    return;
-  }
-  const res = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json; charset=utf-8', authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
-    body: Buffer.from(JSON.stringify({ to: env.LINE_USER_ID, messages }), 'utf8'),
-  });
-  if (!res.ok) console.warn('LINEへの送信に失敗: ' + (await res.text()));
+  await notify(messages);
 }
 function yen(usd) {
   return `約${Math.round(usd * 155)}円`;

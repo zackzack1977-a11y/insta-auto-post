@@ -12,6 +12,7 @@ const {
 } = require('./shared');
 const { renderFinalVideo, pickCoverFrame } = require('./video-edit');
 const { dishNameFromFilename, pickRandomMusic } = require('./post-helpers');
+const { notify } = require('./notify');
 
 const GENERATED_DIR = path.join(ROOT, 'generated');
 // Food & Bar ZackのFacebookページID。位置情報タグにはそのままこのIDを使う
@@ -248,27 +249,16 @@ function signPublishToken(creationId, timestamp) {
   return crypto.createHmac('sha256', PUBLISH_SIGNING_SECRET).update(`${creationId}.${timestamp}`).digest('hex');
 }
 
-// 確認通知の前に、投稿する動画そのものをLINEに送る(その場で再生して、崩れていないか見られるように)。
+// 確認通知の前に、投稿する動画そのものを送る(その場で再生して、崩れていないか見られるように)。
 // 2026-10-16、崩れた動画を中身を見ないまま「投稿する」してしまったことを受けて追加。
-// 動画メッセージがLINE側で受け付けられなくても、確認通知(本文)は必ず届くように、別送・失敗は無視する。
+// 動画が受け付けられなくても、確認通知(本文)は必ず届くように、別送・失敗は無視する。
+// 2026-11-28: 送り先は src/notify.js(NOTIFY_CHANNEL で Discord / LINE を切り替え)
 async function sendLineVideoPreview(videoUrl, previewImageUrl) {
-  if (!LINE_USER_ID || !LINE_CHANNEL_ACCESS_TOKEN) return;
   try {
-    const body = JSON.stringify({
-      to: LINE_USER_ID,
-      messages: [{ type: 'video', originalContentUrl: videoUrl, previewImageUrl }],
-    });
-    const res = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-      },
-      body: Buffer.from(body, 'utf8'),
-    });
-    if (!res.ok) console.warn('LINEへの動画の送信に失敗しました(確認通知は続けて送ります): ' + (await res.text()));
+    const r = await notify([{ type: 'video', originalContentUrl: videoUrl, previewImageUrl }]);
+    if (!r.ok) console.warn('動画の送信に失敗しました(確認通知は続けて送ります)');
   } catch (e) {
-    console.warn('LINEへの動画の送信に失敗しました(確認通知は続けて送ります): ' + e.message);
+    console.warn('動画の送信に失敗しました(確認通知は続けて送ります): ' + e.message);
   }
 }
 
@@ -282,93 +272,37 @@ async function sendLineNotification(dishName, caption, publishUrl, expiresAt, vi
     `【Instagram投稿の確認】\n${dishName}\n\n` +
     `${caption}\n\n` +
     `🎬 投稿する動画(すぐ上の動画、またはこのリンクで再生できます。崩れていないか見てください):\n${videoUrl}\n\n` +
-    `内容を確認して問題なければ、このリンクをタップして「投稿する」を押してください。夕方5時に予約で公開されます(5時を過ぎてから押したときは、すぐ公開):\n${publishUrl}\n\n` +
+    `内容を確認して問題なければ、このリンクを開いて「投稿する」を押してください。夕方5時に予約で公開されます(5時を過ぎてから押したときは、すぐ公開):\n${publishUrl}\n\n` +
     `⏰ このリンクは ${expiresAtJst}(日本時間)頃までが期限です。期限切れになった場合、この写真は自動で次回投稿の候補に戻ります。`;
-
-  if (!LINE_USER_ID) {
-    throw new Error('LINE_USER_IDが設定されていません。GitHub SecretsにLINE_USER_IDを登録してください。');
-  }
-
-  const body = JSON.stringify({ to: LINE_USER_ID, messages: [{ type: 'text', text }] });
-  const res = await fetchWithRetry(
-    'https://api.line.me/v2/bot/message/push',
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-      },
-      body: Buffer.from(body, 'utf8'),
-    },
-    { label: 'LINE通知' }
-  );
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`LINE通知エラー: ${errText}`);
-  }
+  const r = await notify([{ type: 'text', text }]);
+  if (!r.ok) throw new Error(`確認通知エラー: ${r.error || '送り先の設定がありません'}`);
 }
 
-// Genspark動画がまだ用意できていない写真が選ばれた場合、無理に(ffmpegの簡易動画で)
-// 投稿はせず、投稿を見送ったことだけをLINEに知らせる。posted.jsonには記録しないため、
-// この写真は次回以降も引き続き候補として残る(「作り置き」バッチが追いつくのを待つ)。
-async function sendSkipNotification(dishName, reason = 'Genspark動画がまだ用意できていなかった') {
+// 動画がまだ用意できていない写真が選ばれた場合、投稿はせず、見送ったことだけを知らせる。
+// posted.jsonには記録しないため、この写真は次回以降も引き続き候補として残る。
+async function sendSkipNotification(dishName, reason = '動画がまだ用意できていなかった') {
   const text =
     `【Instagram投稿を見送りました】\n` +
     `本日投稿予定だった「${dishName}」について、${reason}ため、今回の投稿は見送りました。\n\n` +
-    `作り置き(毎日10時に自動生成)が追いつき次第、次回以降の実行で自動的に投稿されます。`;
-
-  if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_USER_ID) {
-    console.warn('LINE_USER_ID/LINE_CHANNEL_ACCESS_TOKEN未設定のため、見送り通知は送信できません。');
-    return;
-  }
-
-  const body = JSON.stringify({ to: LINE_USER_ID, messages: [{ type: 'text', text }] });
-  const res = await fetchWithRetry(
-    'https://api.line.me/v2/bot/message/push',
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-      },
-      body: Buffer.from(body, 'utf8'),
-    },
-    { label: 'LINE見送り通知' }
-  );
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`LINE見送り通知エラー: ${errText}`);
-  }
+    `作り置きが追いつき次第、次回以降の実行で自動的に投稿されます。`;
+  const r = await notify([{ type: 'text', text }]);
+  if (!r.ok) throw new Error(`見送り通知エラー: ${r.error || '送り先の設定がありません'}`);
 }
 
-// main()内で例外が起きた場合、可能な限りたけしさん個人にLINEでエラーを知らせる。
-// ここ自体が失敗しても(LINE_USER_ID未設定など)、元のエラーをもみ消さないよう
-// 必ず自分で例外を握りつぶす。
+// main()内で例外が起きた場合、可能な限りたけしさんにエラーを知らせる。
+// ここ自体が失敗しても、元のエラーをもみ消さないよう必ず自分で例外を握りつぶす。
 async function notifyErrorBestEffort(err, photo) {
   try {
-    if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_USER_ID) {
-      console.error('LINE_USER_ID/LINE_CHANNEL_ACCESS_TOKEN未設定のため、エラー通知は送信できません。');
-      return;
-    }
     const text =
       `【Instagram自動投稿でエラー】\n` +
       (photo ? `対象: ${photo}\n\n` : '\n') +
       `${String(err && err.message ? err.message : err).slice(0, 800)}\n\n` +
       `詳細はGitHub Actionsの実行ログを確認してください。`;
-    const body = JSON.stringify({ to: LINE_USER_ID, messages: [{ type: 'text', text }] });
-    await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-      },
-      body: Buffer.from(body, 'utf8'),
-    });
+    await notify([{ type: 'text', text }]);
   } catch (notifyErr) {
     console.error('エラー通知の送信自体にも失敗しました:', notifyErr);
   }
 }
-
 // 「LINEに提示したが公開されたか未確認(confirmed: false)」のエントリについて、
 // Instagram側のコンテナ状態を確認し、
 //   - PUBLISHED  → confirmed: true にする(実際に公開されたことを確定)
@@ -568,7 +502,7 @@ async function main() {
   }
   // 2026-11-25: LINEが送れないとき(月の上限など)の逃げ道。公開リンクをWorkerに預け、パソコンが業務ナビに出す。
   // 送れたときも預けておく(lineOk: true。パソコン側は、送れなかったときだけナビに出す)。
-  const stashed = await stashPublishLink({ id: creationId, ts: timestamp, sig, dish: dishName || photo, videoUrl: lineVideoUrl, lineOk: !lineError });
+  const stashed = await stashPublishLink({ id: creationId, ts: timestamp, sig, dish: dishName || photo, videoUrl: lineVideoUrl, lineOk: !lineError /* 送り先(Discord/LINE)に届いたか */ });
   if (lineError) {
     if (!stashed) throw lineError;
     console.warn('LINEに確認通知を送れませんでした(' + lineError.message.slice(0, 200) + ')。公開のリンクは、パソコンの業務ナビのお知らせに出ます。');

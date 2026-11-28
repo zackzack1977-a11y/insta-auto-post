@@ -29,17 +29,9 @@ async function graph(pathAndQuery) {
   return json;
 }
 
+// 2026-11-28: 送り先は src/notify.js(NOTIFY_CHANNEL で Discord / LINE を切り替え)
 async function sendLine(text) {
-  if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_USER_ID) {
-    console.warn('LINEの設定が無いため、知らせを送れません: ' + text);
-    return;
-  }
-  const res = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json; charset=utf-8', authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}` },
-    body: Buffer.from(JSON.stringify({ to: LINE_USER_ID, messages: [{ type: 'text', text }] }), 'utf8'),
-  });
-  if (!res.ok) console.warn('LINEの送信に失敗: ' + (await res.text()));
+  await require('./notify').notifyText(text);
 }
 
 // こちらが渡した動画(BGM合成後)を、gitの履歴から取り出す。投稿後に生成ファイルは消しているが、履歴には残っている

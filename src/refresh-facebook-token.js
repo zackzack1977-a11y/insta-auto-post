@@ -23,19 +23,12 @@ function maskInLogs(value) {
   console.log(`::add-mask::${value}`);
 }
 
+// 2026-11-28: 送り先は src/notify.js(NOTIFY_CHANNEL で Discord / LINE を切り替え)
 async function sendLine(text) {
-  if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_USER_ID) return;
   try {
-    await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-      },
-      body: Buffer.from(JSON.stringify({ to: LINE_USER_ID, messages: [{ type: 'text', text }] }), 'utf8'),
-    });
+    await require('./notify').notifyText(text);
   } catch (err) {
-    console.error('LINE通知の送信に失敗しました:', err);
+    console.error('知らせの送信に失敗しました:', err);
   }
 }
 
